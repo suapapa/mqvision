@@ -109,15 +109,15 @@ func main() {
 			defer img.Close()
 
 			// Create a single Writer and multiple Readers
-			pw, prs := SingleInMultiOutPipe(2)
-			defer pw.Close()
-			defer prs[0].Close()
-			defer prs[1].Close()
+			pIn, pOuts := SingleInMultiOutPipe(2)
+			defer pIn.Close()
+			defer pOuts[0].Close()
+			defer pOuts[1].Close()
 
 			// Copy image data to the Writer (broadcasts to all Readers)
 			go func() {
-				defer pw.Close()
-				io.Copy(pw, img)
+				defer pIn.Close()
+				io.Copy(pIn, img)
 			}()
 
 			// Use the Readers in parallel
@@ -131,7 +131,7 @@ func main() {
 			// Post to concierge using first reader
 			go func() {
 				defer wg.Done()
-				srcImgStoredURL, conciergeErr = conciergeClient.PostImage(prs[0], "image/jpeg")
+				srcImgStoredURL, conciergeErr = conciergeClient.PostImage(pOuts[0], "image/jpeg")
 				if conciergeErr != nil {
 					log.Printf("Error posting image to concierge: %v", conciergeErr)
 				} else {
@@ -142,7 +142,7 @@ func main() {
 			// Read gauge using second reader
 			go func() {
 				defer wg.Done()
-				readResult, geminiErr = geminiClient.ReadGasGuagePic(context.Background(), prs[1])
+				readResult, geminiErr = geminiClient.ReadGasGuagePic(context.Background(), pOuts[1])
 				if geminiErr != nil {
 					log.Printf("Error reading gauge image: %v", geminiErr)
 				}
@@ -220,30 +220,21 @@ func main() {
 }
 
 func mqttReadGuageSubHandler() io.WriteCloser {
-	prGemini, pwGemini := io.Pipe()
-	prConcierge, pwConcierge := io.Pipe()
-
-	// Create a MultiWriter that writes to both pipes
-	mw := io.MultiWriter(pwGemini, pwConcierge)
-
-	// Create a WriteCloser that closes both pipes when closed
-	pw := &multiWriteCloser{
-		Writer:  mw,
-		closers: []io.Closer{pwGemini, pwConcierge},
-	}
+	pIn, pOuts := SingleInMultiOutPipe(2)
+	// defer pw.Close()
 
 	go func() {
-		defer prConcierge.Close()
-		defer prGemini.Close()
+		defer pOuts[0].Close()
+		defer pOuts[1].Close()
 
-		srcImgStoredURL, err := conciergeClient.PostImage(prConcierge, "image/jpeg")
+		srcImgStoredURL, err := conciergeClient.PostImage(pOuts[0], "image/jpeg")
 		if err != nil {
 			log.Printf("Error posting image to concierge: %v", err)
 			return
 		}
 		log.Printf("Posted image to concierge: %s", srcImgStoredURL)
 
-		readResult, err := geminiClient.ReadGasGuagePic(context.Background(), prGemini)
+		readResult, err := geminiClient.ReadGasGuagePic(context.Background(), pOuts[1])
 		if err != nil {
 			log.Printf("Error reading gauge image: %v", err)
 			return
@@ -260,7 +251,7 @@ func mqttReadGuageSubHandler() io.WriteCloser {
 		chLuggage <- l
 	}()
 
-	return pw
+	return pIn
 }
 
 // multiWriteCloser wraps io.MultiWriter to implement io.WriteCloser
