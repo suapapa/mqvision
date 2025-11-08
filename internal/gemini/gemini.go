@@ -34,9 +34,7 @@ import (
 	"google.golang.org/genai"
 )
 
-const (
-	geminiModel = "googleai/gemini-2.5-flash-lite"
-)
+// const geminiModel = "googleai/gemini-2.5-flash-lite"
 
 func float32Ptr(v float32) *float32 {
 	return &v
@@ -45,9 +43,18 @@ func float32Ptr(v float32) *float32 {
 type Client struct {
 	g *genkit.Genkit
 	c *genai.Client
+
+	model        string
+	systemPrompt string
+	prompt       string
 }
 
-func NewClient(ctx context.Context, apiKey string) (*Client, error) {
+func NewClient(ctx context.Context,
+	apiKey string,
+	model string,
+	systemPrompt string,
+	prompt string,
+) (*Client, error) {
 	gk := genkit.Init(ctx, genkit.WithPlugins(&googlegenai.GoogleAI{}))
 
 	// Create Files API client
@@ -60,8 +67,11 @@ func NewClient(ctx context.Context, apiKey string) (*Client, error) {
 	}
 
 	return &Client{
-		g: gk,
-		c: c,
+		g:            gk,
+		c:            c,
+		model:        model,
+		systemPrompt: systemPrompt,
+		prompt:       prompt,
 	}, nil
 }
 
@@ -100,15 +110,17 @@ func (c *Client) ReadGasGuagePic(
 	// fmt.Println("Analyzing image with Genkit using Files API URI...")
 
 	out, _, err := genkit.GenerateData[GasMeterReadResult](ctx, c.g,
-		ai.WithModelName(geminiModel),
+		ai.WithModelName(c.model),
 		ai.WithMessages(
 			ai.NewSystemMessage(
-				// ai.NewMediaPart("image/jpeg", fileSample.URI),
-				ai.NewTextPart(readGuagePicPrompt),
+				// ai.NewMediaPart("image/jpeg", fileSample.URI), // system prompt denies to use image
+				// ai.NewTextPart(readGuagePicPrompt),
+				ai.NewTextPart(c.systemPrompt),
 			),
 			ai.NewUserMessage(
 				ai.NewMediaPart("image/jpeg", file.URI),
-				ai.NewTextPart("Process the image and extract the reading and date."),
+				// ai.NewTextPart("Process the image and extract the reading and date."),
+				ai.NewTextPart(c.prompt),
 			),
 		),
 		ai.WithConfig(&genai.GenerateContentConfig{

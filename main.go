@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -10,40 +11,64 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/suapapa/mqvision/internal/concierge"
 	"github.com/suapapa/mqvision/internal/gemini"
 	"github.com/suapapa/mqvision/internal/mqttdump"
 )
 
 var (
-	mqttHostURI = "mqtt://mqtt:896351@192.168.219.105"
-	mqttTopic   = "homin-home/gas-meter/cam"
-
 	flagSingleShot = ""
 	flagPort       = "8080"
+	flagConfigFile = "config.yaml"
 
-	sensorServer *SensorServer
-	geminiClient *gemini.Client
+	config *Config
 
-	chReadResult chan *gemini.GasMeterReadResult
+	sensorServer    *SensorServer
+	geminiClient    *gemini.Client
+	conciergeClient *concierge.Client
+
+	chLuggage chan *Luggage
 )
+
+type Luggage struct {
+	*gemini.GasMeterReadResult
+	SrcImageURL string
+}
 
 func main() {
 	var err error
 	ctx := context.Background()
 
+	flag.StringVar(&flagPort, "p", "8080", "Port to listen on")
+	flag.StringVar(&flagSingleShot, "i", "", "Single run on image file")
+	flag.StringVar(&flagConfigFile, "c", "config.yaml", "Config file to use")
+	flag.Parse()
+
+	config, err = LoadConfig(flagConfigFile)
+	if err != nil {
+		log.Fatalf("Error loading config: %v", err)
+	}
+
 	log.Println("Creating Gemini client")
-	geminiClient, err = gemini.NewClient(ctx, os.Getenv("GEMINI_API_KEY"))
+	geminiClient, err = gemini.NewClient(ctx,
+		config.Gemini.APIKey,
+		config.Gemini.Model,
+		config.Gemini.SystemPrompt, config.Gemini.Prompt,
+	)
 	if err != nil {
 		log.Fatalf("Error creating Gemini client: %v", err)
 	}
 
+	log.Println("Creating concierge client")
+	conciergeClient = concierge.NewClient(config.Concierge.Addr, config.Concierge.Token)
+
 	log.Println("Creating sensor server")
 	sensorServer = &SensorServer{}
 
-	chReadResult = make(chan *gemini.GasMeterReadResult, 10)
-	defer close(chReadResult)
+	chLuggage = make(chan *Luggage, 10)
+	defer close(chLuggage)
 	go func() {
-		for readResult := range chReadResult {
+		for readResult := range chLuggage {
 			// jsonBytes, err := json.MarshalIndent(readResult, "", "  ")
 			// if err != nil {
 			// 	log.Printf("Error marshalling read result: %v", err)
@@ -62,11 +87,7 @@ func main() {
 		}
 	}()
 
-	flag.StringVar(&flagPort, "p", "8080", "Port to listen on")
-	flag.StringVar(&flagSingleShot, "i", "", "Single run on image file")
-	flag.Parse()
-
-	mqttClient, err := mqttdump.NewClient(mqttHostURI, mqttTopic)
+	mqttClient, err := mqttdump.NewClient(config.MQTT.Host, config.MQTT.Topic)
 	if err != nil {
 		log.Fatalf("Error creating MQTT client: %v", err)
 	}
@@ -90,7 +111,12 @@ func main() {
 					log.Fatalf("Error reading gauge image: %v", err)
 				}
 
-				chReadResult <- readResult
+				var l Luggage
+				l.Read = readResult.Read
+				l.ReadAt = readResult.ReadAt
+				l.ItTakes = readResult.ItTakes
+				l.SrcImageURL = imgFileName
+				chLuggage <- &l
 			}
 		} else {
 			log.Println("Running MQTT client")
@@ -114,21 +140,66 @@ func main() {
 }
 
 func mqttReadGuageSubHandler() io.WriteCloser {
-	pr, pw := io.Pipe()
+	prGemini, pwGemini := io.Pipe()
+	prConcierge, pwConcierge := io.Pipe()
+
+	// Create a MultiWriter that writes to both pipes
+	mw := io.MultiWriter(pwGemini, pwConcierge)
+
+	// Create a WriteCloser that closes both pipes when closed
+	pw := &multiWriteCloser{
+		Writer:  mw,
+		closers: []io.Closer{pwGemini, pwConcierge},
+	}
 
 	go func() {
-		defer pr.Close()
+	}()
 
-		readResult, err := geminiClient.ReadGasGuagePic(context.Background(), pr)
+	go func() {
+		defer prConcierge.Close()
+		defer prGemini.Close()
+
+		srcImgStoredURL, err := conciergeClient.PostImage(prConcierge, "image/jpeg")
+		if err != nil {
+			log.Printf("Error posting image to concierge: %v", err)
+			return
+		}
+		log.Printf("Posted image to concierge: %s", srcImgStoredURL)
+
+		readResult, err := geminiClient.ReadGasGuagePic(context.Background(), prGemini)
 		if err != nil {
 			log.Printf("Error reading gauge image: %v", err)
 			return
 		}
 		log.Printf("Read result: %+v", readResult)
-		chReadResult <- readResult
+		var l Luggage
+		l.Read = readResult.Read
+		l.ReadAt = readResult.ReadAt
+		l.ItTakes = readResult.ItTakes
+		l.SrcImageURL = srcImgStoredURL
+		chLuggage <- &l
 	}()
 
 	return pw
+}
+
+// multiWriteCloser wraps io.MultiWriter to implement io.WriteCloser
+type multiWriteCloser struct {
+	io.Writer
+	closers []io.Closer
+}
+
+func (m *multiWriteCloser) Close() error {
+	var errs []error
+	for _, closer := range m.closers {
+		if err := closer.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("errors closing writers: %v", errs)
+	}
+	return nil
 }
 
 // func mqttFileDumpSubHandler() io.WriteCloser {
