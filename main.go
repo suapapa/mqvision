@@ -221,29 +221,46 @@ func main() {
 
 func mqttReadGuageSubHandler() io.WriteCloser {
 	pIn, pOuts := SingleInMultiOutPipe(2)
-	// defer pw.Close()
 
 	go func() {
 		defer pOuts[0].Close()
 		defer pOuts[1].Close()
 
-		srcImgStoredURL, err := conciergeClient.PostImage(pOuts[0], "image/jpeg")
-		if err != nil {
-			log.Printf("Error posting image to concierge: %v", err)
-			return
-		}
-		log.Printf("Posted image to concierge: %s", srcImgStoredURL)
+		var wg sync.WaitGroup
+		wg.Add(2)
 
-		readResult, err := geminiClient.ReadGasGuagePic(context.Background(), pOuts[1])
-		if err != nil {
-			log.Printf("Error reading gauge image: %v", err)
-			return
-		}
-		if readResult == nil {
-			log.Printf("Read result is nil")
-			return
-		}
-		log.Printf("Read result: %+v", readResult)
+		var srcImgStoredURL string
+		var readResult *gemini.GasMeterReadResult
+
+		go func() {
+			defer wg.Done()
+
+			var err error
+			srcImgStoredURL, err = conciergeClient.PostImage(pOuts[0], "image/jpeg")
+			if err != nil {
+				log.Printf("Error posting image to concierge: %v", err)
+				return
+			}
+			log.Printf("Posted image to concierge: %s", srcImgStoredURL)
+		}()
+
+		go func() {
+			defer wg.Done()
+
+			var err error
+			readResult, err = geminiClient.ReadGasGuagePic(context.Background(), pOuts[1])
+			if err != nil {
+				log.Printf("Error reading gauge image: %v", err)
+				return
+			}
+			if readResult == nil {
+				log.Printf("Read result is nil")
+				return
+			}
+			log.Printf("Read result: %+v", readResult)
+		}()
+
+		wg.Wait()
 		l := &Luggage{
 			GasMeterReadResult: readResult,
 			SrcImageURL:        srcImgStoredURL,
