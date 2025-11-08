@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -36,7 +37,7 @@ var (
 
 type Luggage struct {
 	*gemini.GasMeterReadResult
-	SrcImageURL string
+	SrcImageURL string `json:"src_image_url"`
 }
 
 func main() {
@@ -111,17 +112,63 @@ func main() {
 					log.Fatalf("Error opening image file: %v", err)
 				}
 				defer img.Close()
-				readResult, err := geminiClient.ReadGasGuagePic(context.Background(), img)
-				if err != nil {
-					log.Fatalf("Error reading gauge image: %v", err)
+
+				// Create a single Writer and multiple Readers
+				pw, prs := SingleInMultiOutPipe(2)
+				defer pw.Close()
+				defer prs[0].Close()
+				defer prs[1].Close()
+
+				// Copy image data to the Writer (broadcasts to all Readers)
+				go func() {
+					defer pw.Close()
+					io.Copy(pw, img)
+				}()
+
+				// Use the Readers in parallel
+				var wg sync.WaitGroup
+				var srcImgStoredURL string
+				var readResult *gemini.GasMeterReadResult
+				var conciergeErr, geminiErr error
+
+				wg.Add(2)
+
+				// Post to concierge using first reader
+				go func() {
+					defer wg.Done()
+					srcImgStoredURL, conciergeErr = conciergeClient.PostImage(prs[0], "image/jpeg")
+					if conciergeErr != nil {
+						log.Printf("Error posting image to concierge: %v", conciergeErr)
+					} else {
+						log.Printf("Posted image to concierge: %s", srcImgStoredURL)
+					}
+				}()
+
+				// Read gauge using second reader
+				go func() {
+					defer wg.Done()
+					readResult, geminiErr = geminiClient.ReadGasGuagePic(context.Background(), prs[1])
+					if geminiErr != nil {
+						log.Printf("Error reading gauge image: %v", geminiErr)
+					}
+				}()
+
+				wg.Wait()
+
+				if geminiErr != nil {
+					continue
 				}
 
-				var l Luggage
-				l.Read = readResult.Read
-				l.ReadAt = readResult.ReadAt
-				l.ItTakes = readResult.ItTakes
-				l.SrcImageURL = imgFileName
-				chLuggage <- &l
+				if readResult == nil {
+					log.Printf("Read result is nil for image: %s", imgFileName)
+					continue
+				}
+
+				l := &Luggage{
+					GasMeterReadResult: readResult,
+					SrcImageURL:        srcImgStoredURL,
+				}
+				chLuggage <- l
 			}
 		} else {
 			log.Println("Running MQTT client")
@@ -191,9 +238,6 @@ func mqttReadGuageSubHandler() io.WriteCloser {
 	}
 
 	go func() {
-	}()
-
-	go func() {
 		defer prConcierge.Close()
 		defer prGemini.Close()
 
@@ -209,13 +253,16 @@ func mqttReadGuageSubHandler() io.WriteCloser {
 			log.Printf("Error reading gauge image: %v", err)
 			return
 		}
+		if readResult == nil {
+			log.Printf("Read result is nil")
+			return
+		}
 		log.Printf("Read result: %+v", readResult)
-		var l Luggage
-		l.Read = readResult.Read
-		l.ReadAt = readResult.ReadAt
-		l.ItTakes = readResult.ItTakes
-		l.SrcImageURL = srcImgStoredURL
-		chLuggage <- &l
+		l := &Luggage{
+			GasMeterReadResult: readResult,
+			SrcImageURL:        srcImgStoredURL,
+		}
+		chLuggage <- l
 	}()
 
 	return pw
