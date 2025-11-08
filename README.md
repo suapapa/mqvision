@@ -2,9 +2,11 @@
 
 ![mqvision_logo](_img/logo.png)
 
-MQVision은 MQTT 토픽에서 센서 이미지를 수신하여 Genkit(Gemini AI)을 사용해 가스 미터 값을 자동으로 읽고, 원본 이미지를 보관하며, 읽은 센서값을 웹서버로 제공하는 프로그램입니다.
+MQVision은 ![esp32_cam2mqtt](https://github.com/suapapa/esp32_cam2mqtt) 디바이스를 통해
+MQTT 토픽에서 센서 이미지를 수신하여 Genkit(Gemini AI)을 사용해 가스 미터 값을 자동으로 읽고,
+원본 이미지를 보관하며, 읽은 센서값을 웹서버로 제공하는 프로그램입니다.
 
-HomeAssistant의 RESTful integration과 함께 사용하기 위해 설계되었습니다.
+> HomeAssistant의 RESTful integration과 함께 사용하기 위해 설계되었습니다.
 
 ## 주요 기능
 
@@ -126,3 +128,7 @@ sensor:
    - Gemini AI로 전송하여 센서값 추출
 3. 추출된 센서값을 내부 상태에 저장
 4. 웹서버를 통해 최신 센서값 제공
+
+### HomeAssistant 통합 결과
+
+![ha](_img/ha.jpeg)
