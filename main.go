@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"sync"
 	"syscall"
@@ -46,7 +45,7 @@ func main() {
 	defer cancel()
 
 	flag.StringVar(&flagPort, "p", "8080", "Port to listen on")
-	flag.StringVar(&flagSingleShot, "i", "", "Single run on image file")
+	flag.StringVar(&flagSingleShot, "i", "", "Single run on a image file (testing purpose)")
 	flag.StringVar(&flagConfigFile, "c", "config.yaml", "Config file to use")
 	flag.Parse()
 
@@ -101,75 +100,71 @@ func main() {
 
 	go func() {
 		if flagSingleShot != "" {
-			imgFileNames, err := filepath.Glob(flagSingleShot)
+			imgFileName := flagSingleShot
+			log.Printf("Reading image file: %s", imgFileName)
+			img, err := os.Open(imgFileName)
 			if err != nil {
-				log.Fatalf("Error globbing image file: %v", err)
+				log.Fatalf("Error opening image file: %v", err)
 			}
-			for _, imgFileName := range imgFileNames {
-				log.Printf("Reading image file: %s", imgFileName)
-				img, err := os.Open(imgFileName)
-				if err != nil {
-					log.Fatalf("Error opening image file: %v", err)
-				}
-				defer img.Close()
+			defer img.Close()
 
-				// Create a single Writer and multiple Readers
-				pw, prs := SingleInMultiOutPipe(2)
+			// Create a single Writer and multiple Readers
+			pw, prs := SingleInMultiOutPipe(2)
+			defer pw.Close()
+			defer prs[0].Close()
+			defer prs[1].Close()
+
+			// Copy image data to the Writer (broadcasts to all Readers)
+			go func() {
 				defer pw.Close()
-				defer prs[0].Close()
-				defer prs[1].Close()
+				io.Copy(pw, img)
+			}()
 
-				// Copy image data to the Writer (broadcasts to all Readers)
-				go func() {
-					defer pw.Close()
-					io.Copy(pw, img)
-				}()
+			// Use the Readers in parallel
+			var wg sync.WaitGroup
+			var srcImgStoredURL string
+			var readResult *gemini.GasMeterReadResult
+			var conciergeErr, geminiErr error
 
-				// Use the Readers in parallel
-				var wg sync.WaitGroup
-				var srcImgStoredURL string
-				var readResult *gemini.GasMeterReadResult
-				var conciergeErr, geminiErr error
+			wg.Add(2)
 
-				wg.Add(2)
+			// Post to concierge using first reader
+			go func() {
+				defer wg.Done()
+				srcImgStoredURL, conciergeErr = conciergeClient.PostImage(prs[0], "image/jpeg")
+				if conciergeErr != nil {
+					log.Printf("Error posting image to concierge: %v", conciergeErr)
+				} else {
+					log.Printf("Posted image to concierge: %s", srcImgStoredURL)
+				}
+			}()
 
-				// Post to concierge using first reader
-				go func() {
-					defer wg.Done()
-					srcImgStoredURL, conciergeErr = conciergeClient.PostImage(prs[0], "image/jpeg")
-					if conciergeErr != nil {
-						log.Printf("Error posting image to concierge: %v", conciergeErr)
-					} else {
-						log.Printf("Posted image to concierge: %s", srcImgStoredURL)
-					}
-				}()
-
-				// Read gauge using second reader
-				go func() {
-					defer wg.Done()
-					readResult, geminiErr = geminiClient.ReadGasGuagePic(context.Background(), prs[1])
-					if geminiErr != nil {
-						log.Printf("Error reading gauge image: %v", geminiErr)
-					}
-				}()
-
-				wg.Wait()
-
+			// Read gauge using second reader
+			go func() {
+				defer wg.Done()
+				readResult, geminiErr = geminiClient.ReadGasGuagePic(context.Background(), prs[1])
 				if geminiErr != nil {
-					continue
+					log.Printf("Error reading gauge image: %v", geminiErr)
 				}
+			}()
 
-				if readResult == nil {
-					log.Printf("Read result is nil for image: %s", imgFileName)
-					continue
-				}
+			wg.Wait()
 
-				l := &Luggage{
-					GasMeterReadResult: readResult,
-					SrcImageURL:        srcImgStoredURL,
-				}
-				chLuggage <- l
+			if geminiErr != nil {
+				log.Printf("Error reading gauge image: %v", geminiErr)
+				return
 			}
+
+			if readResult == nil {
+				log.Printf("Read result is nil for image: %s", imgFileName)
+				return
+			}
+
+			l := &Luggage{
+				GasMeterReadResult: readResult,
+				SrcImageURL:        srcImgStoredURL,
+			}
+			chLuggage <- l
 		} else {
 			log.Println("Running MQTT client")
 
