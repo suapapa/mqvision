@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/suapapa/mqvision/internal/concierge"
@@ -37,7 +41,8 @@ type Luggage struct {
 
 func main() {
 	var err error
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	flag.StringVar(&flagPort, "p", "8080", "Port to listen on")
 	flag.StringVar(&flagSingleShot, "i", "", "Single run on image file")
@@ -130,13 +135,46 @@ func main() {
 		}
 	}()
 
+	// Set up signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
 	// gin.SetMode(gin.ReleaseMode)
 	log.Printf("Starting Gin server on port %s", flagPort)
 	router := gin.Default()
 	router.GET("/sensor", sensorServer.GetValueHandler)
-	if err := router.Run(":" + flagPort); err != nil {
-		log.Fatalf("Error running Gin server: %v", err)
+
+	// Create HTTP server with graceful shutdown support
+	srv := &http.Server{
+		Addr:    ":" + flagPort,
+		Handler: router,
 	}
+
+	// Start server in a goroutine
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Error running Gin server: %v", err)
+		}
+	}()
+
+	log.Println("Server started. Press Ctrl+C to stop.")
+
+	// Wait for interrupt signal
+	<-sigChan
+	log.Println("Shutting down server...")
+
+	// Cancel context to signal all goroutines
+	cancel()
+
+	// Gracefully shutdown the server with a timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Server stopped")
 }
 
 func mqttReadGuageSubHandler() io.WriteCloser {
