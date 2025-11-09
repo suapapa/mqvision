@@ -31,6 +31,8 @@ var (
 	conciergeClient *concierge.Client
 
 	chLuggage chan *Luggage
+
+	lastReadValue float64
 )
 
 type Luggage struct {
@@ -71,7 +73,7 @@ func main() {
 
 	chLuggage = make(chan *Luggage, 10)
 	defer close(chLuggage)
-	go func() {
+	go func(ctx context.Context) {
 		for readResult := range chLuggage {
 			// jsonBytes, err := json.MarshalIndent(readResult, "", "  ")
 			// if err != nil {
@@ -84,12 +86,25 @@ func main() {
 			read, err := strconv.ParseFloat(readResult.Read, 64)
 			if err != nil {
 				log.Printf("Error parsing read value: %v", err)
-				continue
+
+				readAgainStr, err := geminiClient.ParseAmbiguousDigits(ctx, lastReadValue, readResult.Read)
+				if err != nil {
+					log.Printf("Error parsing read value: %v", err)
+					continue
+				}
+
+				read, err = strconv.ParseFloat(readAgainStr, 64)
+				if err != nil {
+					log.Printf("Error parsing read value: %v", err)
+					continue
+				}
 			}
+
+			lastReadValue = read
 			sensorServer.SetValue(read, readResult)
 			log.Printf("Updated sensor value: %s (%.3f)", readResult.Read, read)
 		}
-	}()
+	}(ctx)
 
 	mqttClient, err := mqttdump.NewClient(config.MQTT.Host, config.MQTT.Topic)
 	if err != nil {

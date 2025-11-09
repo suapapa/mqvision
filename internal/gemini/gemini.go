@@ -26,6 +26,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/firebase/genkit/go/ai"
@@ -93,7 +94,7 @@ func (c *Client) ReadGasGuagePic(
 	// Initialize Genkit
 	file, err := c.c.Files.Upload(ctx, jpgReader, &genai.UploadFileConfig{
 		MIMEType:    "image/jpeg",
-		DisplayName: "Test Image",
+		DisplayName: "Gas Meter Image",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to upload: %v", err)
@@ -137,9 +138,55 @@ func (c *Client) ReadGasGuagePic(
 	return out, nil
 }
 
+func (c *Client) ParseAmbiguousDigits(
+	ctx context.Context,
+	previousValue float64,
+	ambiguousValueString string,
+) (string, error) {
+
+	// check if ambigousVauleString only has ? characters and digits characters
+	if !containsOnly(ambiguousValueString, ".?0123456789") {
+		return "", fmt.Errorf("ambious value string, %s is not valid", ambiguousValueString)
+	}
+
+	resp, err := genkit.Generate(ctx, c.g,
+		ai.WithModelName(c.model),
+		ai.WithMessages(
+			ai.NewUserMessage(
+				ai.NewTextPart(fmt.Sprintf(fixAmbiguousPromptFmt, ambiguousValueString, previousValue)),
+			),
+		),
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate: %v", err)
+	}
+
+	return resp.Text(), nil
+}
+
 type GasMeterReadResult struct {
 	Read    string    `json:"read"`
 	Date    string    `json:"date"`
 	ReadAt  time.Time `json:"read_at,omitempty"`
 	ItTakes string    `json:"it_takes,omitempty"`
 }
+
+func containsOnly(s string, chars string) bool {
+	for _, c := range s {
+		if !strings.Contains(chars, string(c)) {
+			return false
+		}
+	}
+	return true
+}
+
+const fixAmbiguousPromptFmt = `The value “%s” represents the output of a analog-meter-reading analysis performed on an image.
+Uncertain digits within the reading are denoted by the “?” character.
+
+Using the previously recorded meter value %f as a reference,
+infer and replace the “?” characters to estimate the most probable complete reading.
+
+Instructions:
+- Return a string with the exact same length as the input value.
+- Output only the predicted value, without any explanations or additional text.
+`
