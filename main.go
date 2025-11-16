@@ -70,25 +70,35 @@ func main() {
 	sensorServer = &SensorServer{}
 
 	chLuggage = make(chan *Luggage, 10)
-	defer close(chLuggage)
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func(ctx context.Context) {
-		for readResult := range chLuggage {
-			// jsonBytes, err := json.MarshalIndent(readResult, "", "  ")
-			// if err != nil {
-			// 	log.Printf("Error marshalling read result: %v", err)
-			// 	continue
-			// }
-			// os.Stdout.Write(jsonBytes)
-			// os.Stdout.WriteString("\n")
+		defer wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case readResult, ok := <-chLuggage:
+				if !ok {
+					return
+				}
+				// jsonBytes, err := json.MarshalIndent(readResult, "", "  ")
+				// if err != nil {
+				// 	log.Printf("Error marshalling read result: %v", err)
+				// 	continue
+				// }
+				// os.Stdout.Write(jsonBytes)
+				// os.Stdout.WriteString("\n")
 
-			read, err := strconv.ParseFloat(readResult.Read, 64)
-			if err != nil {
-				log.Printf("Error parsing read value: %v", err)
-				continue
+				read, err := strconv.ParseFloat(readResult.Read, 64)
+				if err != nil {
+					log.Printf("Error parsing read value: %v", err)
+					continue
+				}
+
+				sensorServer.SetValue(read, readResult)
+				log.Printf("Updated sensor value: %s (%.3f)", readResult.Read, read)
 			}
-
-			sensorServer.SetValue(read, readResult)
-			log.Printf("Updated sensor value: %s (%.3f)", readResult.Read, read)
 		}
 	}(ctx)
 
@@ -98,7 +108,9 @@ func main() {
 	}
 	defer mqttClient.Stop()
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if flagSingleShot != "" {
 			imgFileName := flagSingleShot
 			log.Printf("Reading image file: %s", imgFileName)
@@ -183,7 +195,9 @@ func main() {
 
 	// gin.SetMode(gin.ReleaseMode)
 	log.Printf("Starting Gin server on port %s", flagPort)
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Recovery())
+	// router.Use(gin.Logger())
 	router.GET("/sensor", sensorServer.GetValueHandler)
 
 	// Create HTTP server with graceful shutdown support
@@ -208,12 +222,38 @@ func main() {
 	// Cancel context to signal all goroutines
 	cancel()
 
+	// Stop MQTT client first
+	if mqttClient != nil {
+		log.Println("Stopping MQTT client...")
+		if err := mqttClient.Stop(); err != nil {
+			log.Printf("Error stopping MQTT client: %v", err)
+		}
+	}
+
+	// Close chLuggage channel to signal the goroutine to exit
+	close(chLuggage)
+
 	// Gracefully shutdown the server with a timeout
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Server forced to shutdown: %v", err)
+	}
+
+	// Wait for all goroutines to finish
+	log.Println("Waiting for goroutines to finish...")
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		log.Println("All goroutines finished")
+	case <-time.After(5 * time.Second):
+		log.Println("Timeout waiting for goroutines to finish")
 	}
 
 	log.Println("Server stopped")
