@@ -122,6 +122,29 @@ body {
   }
 }
 
+.footer {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.footer p {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  word-break: keep-all;
+}
+
+.footer a {
+  color: var(--primary-ink);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.footer a:hover {
+  color: var(--primary);
+}
+
 /* —— Header —— */
 
 .topbar {

@@ -112,6 +112,14 @@ export default function App() {
             <HistoryChart history={history} loading={loading} />
           </Suspense>
         </main>
+
+        <footer className="footer">
+          <p>
+            © Homin Lee &lt;
+            <a href="mailto:i@homin.dev">i@homin.dev</a>
+            &gt;
+          </p>
+        </footer>
       </div>
     </>
   )
