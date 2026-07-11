@@ -24,6 +24,8 @@ import (
 	// "github.com/suapapa/mqvision/internal/genai/googleai"
 )
 
+const mqttDisconnectExitAfter = 2 * time.Minute
+
 var (
 	flagSingleShot = ""
 	flagPort       = "8080"
@@ -41,6 +43,37 @@ var (
 	// appCtx is the process-wide context for downstream API calls (cancelled on shutdown).
 	appCtx context.Context
 )
+
+// watchMQTTDisconnect closes exitCh if MQTT stays disconnected for longer than threshold.
+func watchMQTTDisconnect(ctx context.Context, threshold time.Duration, exitCh chan<- struct{}) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	var disconnectedSince time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if mqttClient == nil {
+				continue
+			}
+			connected, _ := mqttClient.Status()
+			if connected {
+				disconnectedSince = time.Time{}
+				continue
+			}
+			if disconnectedSince.IsZero() {
+				disconnectedSince = time.Now()
+				continue
+			}
+			if time.Since(disconnectedSince) >= threshold {
+				close(exitCh)
+				return
+			}
+		}
+	}
+}
 
 func newVisionClient(ctx context.Context, c *Config) (genai.VisionClient, error) {
 	base := strings.TrimSpace(c.OpenAICompat.BaseURL)
@@ -220,9 +253,20 @@ func main() {
 
 	log.Println("Server started. Press Ctrl+C to stop.")
 
-	// Wait for interrupt signal
-	<-sigChan
-	log.Println("Shutting down server...")
+	// If MQTT stays down long enough, exit so Docker restart:unless-stopped can recover.
+	watchdogExit := make(chan struct{})
+	if flagSingleShot == "" {
+		go watchMQTTDisconnect(ctx, mqttDisconnectExitAfter, watchdogExit)
+	}
+
+	exitCode := 0
+	select {
+	case <-sigChan:
+		log.Println("Shutting down server...")
+	case <-watchdogExit:
+		log.Printf("MQTT disconnected for %v; exiting for container restart", mqttDisconnectExitAfter)
+		exitCode = 1
+	}
 
 	// Cancel context to signal all goroutines
 	cancel()
@@ -262,6 +306,9 @@ func main() {
 	}
 
 	log.Println("Server stopped")
+	if exitCode != 0 {
+		os.Exit(exitCode)
+	}
 }
 
 func mqttReadGaugeSubHandler() io.WriteCloser {

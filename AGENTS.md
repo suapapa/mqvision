@@ -42,7 +42,7 @@ graph TD
 ## 3. Code Tour
 
 ### Root Files
-- [main.go](file:///Users/suapapa/ws_suapapa/mqvision/main.go): Application entry point. Loads config, initializes clients, subscribes to MQTT, spins up the Gin web server, and manages channel traffic via chLuggage. Handles graceful shutdown.
+- [main.go](file:///Users/suapapa/ws_suapapa/mqvision/main.go): Application entry point. Loads config, initializes clients, subscribes to MQTT, spins up the Gin web server, and manages channel traffic via chLuggage. Handles graceful shutdown. In MQTT mode, exits non-zero if MQTT stays disconnected for ~2 minutes so Docker `restart: unless-stopped` can recover.
 - [config.go](file:///Users/suapapa/ws_suapapa/mqvision/config.go): Loads configuration from config.yaml into the Config struct.
 - [server.go](file:///Users/suapapa/ws_suapapa/mqvision/server.go): Exposes GET /api/sensor, GET /api/sensors, and GET /api/health HTTP endpoints via Gin. Implements SensorServer with sync.RWMutex. Serves the Vite SPA from `web/dist` when present.
 - [web/](file:///Users/suapapa/ws_suapapa/mqvision/web): React + TypeScript monitoring dashboard (Vite). Dev server proxies `/api` to `:8080`; production build is static files under `web/dist`. Visual tokens documented in [DESIGN.md](file:///Users/suapapa/ws_suapapa/mqvision/DESIGN.md).
@@ -52,7 +52,7 @@ graph TD
 
 ### Internal Packages
 - [internal/concierge/concierge.go](file:///Users/suapapa/ws_suapapa/mqvision/internal/concierge/concierge.go): Client implementation for the Concierge storage service. Uses multipart form posts.
-- [internal/mqttdump/mqttdump.go](file:///Users/suapapa/ws_suapapa/mqvision/internal/mqttdump/mqttdump.go): Wrapper for Eclipse Paho Go MQTT client, supporting auto-reconnection.
+- [internal/mqttdump/mqttdump.go](file:///Users/suapapa/ws_suapapa/mqvision/internal/mqttdump/mqttdump.go): Wrapper for Eclipse Paho Go MQTT client. Uses AutoReconnect + ConnectRetry, and re-Subscribes in OnConnect so subscriptions survive broker/network recovery.
 - [internal/genai/genai.go](file:///Users/suapapa/ws_suapapa/mqvision/internal/genai/genai.go): Core VisionClient interface and GasMeterReadResult struct definition.
 - [internal/genai/chars.go](file:///Users/suapapa/ws_suapapa/mqvision/internal/genai/chars.go): Helper logic to check character patterns.
 - [internal/genai/openaicompat/openaicompat.go](file:///Users/suapapa/ws_suapapa/mqvision/internal/genai/openaicompat/openaicompat.go): Active implementation of VisionClient using an OpenAI-compatible vision completion endpoint.
