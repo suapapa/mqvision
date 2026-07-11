@@ -1,0 +1,39 @@
+# Dependencies & build
+node_modules
+dist
+dist-ssr
+coverage
+.vite
+
+# Local env / secrets
+*.local
+.env
+.env.*
+!.env.example
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Caches & tooling
+*.tsbuildinfo
+.eslintcache
+.oxlintcache
+test-results/
+playwright-report/
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

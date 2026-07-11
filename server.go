@@ -2,11 +2,44 @@ package main
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
+
+// mountWebUI serves the Vite-built SPA from webRoot (typically web/dist).
+// API routes under /api keep their own 404; everything else falls back to index.html.
+func mountWebUI(router *gin.Engine, webRoot string) {
+	info, err := os.Stat(webRoot)
+	if err != nil || !info.IsDir() {
+		return
+	}
+
+	assets := filepath.Join(webRoot, "assets")
+	if st, err := os.Stat(assets); err == nil && st.IsDir() {
+		router.Static("/assets", assets)
+	}
+
+	for _, name := range []string{"favicon.svg", "icons.svg"} {
+		p := filepath.Join(webRoot, name)
+		if _, err := os.Stat(p); err == nil {
+			router.StaticFile("/"+name, p)
+		}
+	}
+
+	index := filepath.Join(webRoot, "index.html")
+	router.NoRoute(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
+		c.File(index)
+	})
+}
 
 type SensorReading struct {
 	Value     float64   `json:"value"`

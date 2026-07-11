@@ -78,6 +78,26 @@ prompt:
 - `-p`: 웹서버 포트 (기본값: 8080)
 - `-c`: 설정 파일 경로 (기본값: config.yaml)
 
+브라우저에서 `http://localhost:8080/` 로 모니터링 대시보드에 접근할 수 있습니다.
+(프론트엔드를 빌드해 `web/dist`가 있어야 합니다.)
+
+### 프론트엔드 개발
+
+```bash
+# 터미널 1: API 서버
+./mqvision -p 8080 -c config.yaml
+
+# 터미널 2: Vite 개발 서버 (API는 localhost:8080으로 프록시)
+cd web && npm install && npm run dev
+```
+
+프로덕션용 정적 빌드:
+
+```bash
+cd web && npm run build
+# web/dist 를 Gin이 / 로 서빙
+```
+
 ## API 엔드포인트
 
 ### GET /api/sensor

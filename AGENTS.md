@@ -44,7 +44,8 @@ graph TD
 ### Root Files
 - [main.go](file:///Users/suapapa/ws_suapapa/mqvision/main.go): Application entry point. Loads config, initializes clients, subscribes to MQTT, spins up the Gin web server, and manages channel traffic via chLuggage. Handles graceful shutdown.
 - [config.go](file:///Users/suapapa/ws_suapapa/mqvision/config.go): Loads configuration from config.yaml into the Config struct.
-- [server.go](file:///Users/suapapa/ws_suapapa/mqvision/server.go): Exposes GET /api/sensor, GET /api/sensors, and GET /api/health HTTP endpoints via Gin. Implements SensorServer with sync.RWMutex.
+- [server.go](file:///Users/suapapa/ws_suapapa/mqvision/server.go): Exposes GET /api/sensor, GET /api/sensors, and GET /api/health HTTP endpoints via Gin. Implements SensorServer with sync.RWMutex. Serves the Vite SPA from `web/dist` when present.
+- [web/](file:///Users/suapapa/ws_suapapa/mqvision/web): React + TypeScript monitoring dashboard (Vite). Dev server proxies `/api` to `:8080`; production build is static files under `web/dist`. Visual tokens documented in [DESIGN.md](file:///Users/suapapa/ws_suapapa/mqvision/DESIGN.md).
 - [multi_writer_pipe.go](file:///Users/suapapa/ws_suapapa/mqvision/multi_writer_pipe.go): Duplicates output writer streams (currently unused).
 - [config.yaml](file:///Users/suapapa/ws_suapapa/mqvision/config.yaml): Prompt-only configuration (system/user instructions for the vision model).
 - [.env.example](file:///Users/suapapa/ws_suapapa/mqvision/.env.example): Sample environment variables for MQTT, Concierge, and OpenAI-compatible API credentials.

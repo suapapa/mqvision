@@ -1,4 +1,3 @@
-.gitignore
 mqvision
 .env
 .DS_Store
@@ -8,3 +7,24 @@ skills-lock.json
 
 *.sh
 *.jpg
+*.bak
+
+# —— web (Vite / React) ——
+web/node_modules/
+web/dist/
+web/dist-ssr/
+web/coverage/
+web/.vite/
+web/*.local
+web/.env
+web/.env.*
+!web/.env.example
+web/npm-debug.log*
+web/yarn-debug.log*
+web/yarn-error.log*
+web/pnpm-debug.log*
+web/*.tsbuildinfo
+web/.eslintcache
+web/.oxlintcache
+web/test-results/
+web/playwright-report/

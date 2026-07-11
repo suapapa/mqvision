@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -99,3 +102,70 @@ func TestSensorServerHistory(t *testing.T) {
 		t.Errorf("expected value 20.5, got %v", readings[0].Value)
 	}
 }
+
+func TestMountWebUI(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	index := filepath.Join(dir, "index.html")
+	if err := os.WriteFile(index, []byte("<!doctype html><title>mqvision</title>"), 0o644); err != nil {
+		t.Fatalf("write index: %v", err)
+	}
+	assets := filepath.Join(dir, "assets")
+	if err := os.Mkdir(assets, 0o755); err != nil {
+		t.Fatalf("mkdir assets: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(assets, "app.js"), []byte("console.log(1)"), 0o644); err != nil {
+		t.Fatalf("write asset: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/api/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+	mountWebUI(router, dir)
+
+	t.Run("serves index", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/", nil)
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
+		}
+		if !strings.Contains(w.Body.String(), "mqvision") {
+			t.Fatalf("unexpected body: %s", w.Body.String())
+		}
+	})
+
+	t.Run("spa fallback", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/dashboard", nil)
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
+		}
+		if !strings.Contains(w.Body.String(), "mqvision") {
+			t.Fatalf("unexpected body: %s", w.Body.String())
+		}
+	})
+
+	t.Run("api 404 stays json", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/api/missing", nil)
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d", w.Code)
+		}
+	})
+
+	t.Run("serves assets", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/assets/app.js", nil)
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
+		}
+	})
+}
+

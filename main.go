@@ -203,6 +203,7 @@ func main() {
 	router.GET("/api/sensor", sensorServer.GetValueHandler)
 	router.GET("/api/sensors", sensorServer.GetHistoryHandler)
 	router.GET("/api/health", healthHandler)
+	mountWebUI(router, "web/dist")
 
 	// Create HTTP server with graceful shutdown support
 	srv := &http.Server{

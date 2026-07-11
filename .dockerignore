@@ -9,3 +9,7 @@ test/
 README.md
 LICENSE
 config.yaml
+web/node_modules
+web/dist
+.agents
+skills-lock.json
