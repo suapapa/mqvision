@@ -24,7 +24,7 @@ func mountWebUI(router *gin.Engine, webRoot string) {
 		router.Static("/assets", assets)
 	}
 
-	for _, name := range []string{"favicon.svg", "icons.svg"} {
+	for _, name := range []string{"favicon.svg", "icons.svg", "og-image.jpg"} {
 		p := filepath.Join(webRoot, name)
 		if _, err := os.Stat(p); err == nil {
 			router.StaticFile("/"+name, p)

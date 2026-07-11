@@ -6,7 +6,6 @@ mqvision
 skills-lock.json
 
 *.sh
-*.jpg
 *.bak
 
 # —— web (Vite / React) ——
