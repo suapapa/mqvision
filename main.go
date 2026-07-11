@@ -29,7 +29,7 @@ const mqttDisconnectExitAfter = 2 * time.Minute
 var (
 	flagSingleShot = ""
 	flagPort       = "8080"
-	flagConfigFile = "config.yaml"
+	flagConfigFile = "prompt.yaml"
 
 	config *Config
 
@@ -86,8 +86,10 @@ func newVisionClient(ctx context.Context, c *Config) (genai.VisionClient, error)
 		c.OpenAICompat.BaseURL,
 		c.OpenAICompat.APIKey,
 		c.OpenAICompat.Model,
-		c.Prompt.System,
-		c.Prompt.User,
+		c.ReadGasGauge.System,
+		c.ReadGasGauge.User,
+		c.FixAmbiguous.System,
+		c.FixAmbiguous.User,
 	), nil
 	// if strings.TrimSpace(c.Gemini.APIKey) == "" {
 	// 	return nil, fmt.Errorf("configure openai_compat (base_url + api_key) or gemini (api_key)")
@@ -96,8 +98,10 @@ func newVisionClient(ctx context.Context, c *Config) (genai.VisionClient, error)
 	// return googleai.NewClient(ctx,
 	// 	c.Gemini.APIKey,
 	// 	c.Gemini.Model,
-	// 	c.Prompt.System,
-	// 	c.Prompt.User,
+	// 	c.ReadGasGauge.System,
+	// 	c.ReadGasGauge.User,
+	// 	c.FixAmbiguous.System,
+	// 	c.FixAmbiguous.User,
 	// )
 }
 
@@ -114,7 +118,7 @@ func main() {
 
 	flag.StringVar(&flagPort, "p", "8080", "Port to listen on")
 	flag.StringVar(&flagSingleShot, "i", "", "Single run on a image file (testing purpose)")
-	flag.StringVar(&flagConfigFile, "c", "config.yaml", "Config file to use")
+	flag.StringVar(&flagConfigFile, "c", "prompt.yaml", "Prompt config file to use")
 	flag.Parse()
 
 	config, err = LoadConfig(flagConfigFile)

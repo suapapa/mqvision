@@ -30,6 +30,7 @@ RUN apk --no-cache add ca-certificates tzdata wget
 WORKDIR /app
 
 COPY --from=builder /app/mqvision .
+COPY --from=builder /app/prompt.yaml .
 COPY --from=web /web/dist ./web/dist
 
 EXPOSE 8080

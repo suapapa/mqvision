@@ -3,12 +3,19 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/goccy/go-yaml"
 	"github.com/joho/godotenv"
 )
 
-// Config holds settings from environment variables and YAML (prompt).
+// PromptPair is a system/user prompt pair loaded from YAML.
+type PromptPair struct {
+	System string `yaml:"system"`
+	User   string `yaml:"user"`
+}
+
+// Config holds settings from environment variables and YAML (prompts).
 type Config struct {
 	MQTT struct {
 		Host  string
@@ -27,10 +34,8 @@ type Config struct {
 		APIKey  string
 		Model   string
 	}
-	Prompt struct {
-		System string `yaml:"system"`
-		User   string `yaml:"user"`
-	} `yaml:"prompt"`
+	ReadGasGauge PromptPair `yaml:"read_gas_gauge"`
+	FixAmbiguous PromptPair `yaml:"fix_ambiguous"`
 }
 
 // LoadConfig reads prompt settings from YAML and connection secrets from the environment.
@@ -77,9 +82,13 @@ func (c *Config) validate() error {
 		{"OPENAI_BASE_URL", c.OpenAICompat.BaseURL},
 		{"OPENAI_API_KEY", c.OpenAICompat.APIKey},
 		{"OPENAI_MODEL", c.OpenAICompat.Model},
+		{"read_gas_gauge.system", c.ReadGasGauge.System},
+		{"read_gas_gauge.user", c.ReadGasGauge.User},
+		{"fix_ambiguous.system", c.FixAmbiguous.System},
+		{"fix_ambiguous.user", c.FixAmbiguous.User},
 	}
 	for _, r := range required {
-		if r.value == "" {
+		if strings.TrimSpace(r.value) == "" {
 			return fmt.Errorf("%s is required", r.name)
 		}
 	}

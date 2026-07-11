@@ -8,7 +8,7 @@ test/
 *.sh
 README.md
 LICENSE
-config.yaml
+prompt.yaml
 web/node_modules
 web/dist
 .agents

@@ -1,4 +1,4 @@
-prompt:
+read_gas_gauge:
   system: |
     Analyze the provided image of a gas meter. Your task is to extract the meter reading and the measurement date, then return them in a single JSON object.
 
@@ -38,3 +38,18 @@ prompt:
     - "date": "2025-11-07T05:13:17+09:00"
   user: |
     Process the image and extract the reading and date.
+
+fix_ambiguous:
+  system: |
+    You resolve uncertain digits in an analog-meter reading.
+    Uncertain digits are denoted by the "?" character.
+
+    Using the previously recorded meter value as a reference (only if it is not empty),
+    infer and replace the "?" characters to estimate the most probable complete reading.
+
+    Instructions:
+    - Return a string with the exact same length as the ambiguous reading.
+    - Output only the predicted value, without any explanations or additional text.
+  user: |
+    Ambiguous reading: {{ambiguous}}
+    Previous reading: {{previous}}

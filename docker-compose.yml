@@ -10,7 +10,7 @@ services:
       - "8083:8080"
     volumes:
       # Mount the prompt configuration file so it can be updated without rebuilding the image
-      - ./config.yaml:/app/config.yaml:ro
+      - ./prompt.yaml:/app/prompt.yaml:ro
     env_file:
       - path: .env
         required: false
@@ -20,7 +20,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
-    # command: ["-p", "8080", "-c", "config.yaml"] # Optional: override port or config path
+    # command: ["-p", "8080", "-c", "prompt.yaml"] # Optional: override port or config path
 
 # Optional: If you want to spin up dependent services locally for testing,
 # you can uncomment the following blocks.

@@ -24,12 +24,15 @@ type Client struct {
 	model        string
 	systemPrompt string
 	promptForImg string
+	fixSystem   string
+	fixUser     string
 	lastRead     string
 }
 
 // NewClient constructs a Client. baseURL should be the API root (e.g. https://host/v1) without a trailing slash.
+// fixUser may contain {{ambiguous}} and {{previous}} placeholders.
 func NewClient(
-	baseURL, apiKey, model, systemPrompt, promptForImg string,
+	baseURL, apiKey, model, systemPrompt, promptForImg, fixSystem, fixUser string,
 ) *Client {
 	b := strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	return &Client{
@@ -41,6 +44,8 @@ func NewClient(
 		model:        model,
 		systemPrompt: systemPrompt,
 		promptForImg: promptForImg,
+		fixSystem:   fixSystem,
+		fixUser:     fixUser,
 	}
 }
 
@@ -259,23 +264,14 @@ func (c *Client) guessAmbiguousDigits(ctx context.Context, ambiguousValueString 
 	if !genai.ContainsOnly(ambiguousValueString, ".?0123456789") {
 		return "", fmt.Errorf("ambiguous value string %q is not valid", ambiguousValueString)
 	}
-	prompt := fmt.Sprintf(fixAmbiguousPromptFmt, ambiguousValueString, c.lastRead)
+	userPrompt := strings.ReplaceAll(c.fixUser, "{{ambiguous}}", ambiguousValueString)
+	userPrompt = strings.ReplaceAll(userPrompt, "{{previous}}", c.lastRead)
 	content, err := c.chatCompletion(ctx, []chatMessage{
-		{Role: "user", Content: prompt},
+		{Role: "system", Content: c.fixSystem},
+		{Role: "user", Content: userPrompt},
 	}, 0.1)
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(content), nil
 }
-
-const fixAmbiguousPromptFmt = `The value "%s" represents the output of a analog-meter-reading analysis performed on an image.
-Uncertain digits within the reading are denoted by the "?" character.
-
-Using the previously recorded meter value "%s" as a reference (only if it is not empty),
-infer and replace the "?" characters to estimate the most probable complete reading.
-
-Instructions:
-- Return a string with the exact same length as the input value.
-- Output only the predicted value, without any explanations or additional text.
-`

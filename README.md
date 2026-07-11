@@ -57,26 +57,35 @@ OPENAI_MODEL=gpt-4o-mini
    - `OPENAI_API_KEY`: OpenAI 호환 API 키
    - `OPENAI_MODEL`: 사용할 비전 모델
 
-3. `config.yaml`에는 프롬프트만 둡니다 (저장소에 포함됨):
+3. `prompt.yaml`에는 프롬프트만 둡니다 (저장소에 포함됨):
 
 ```yaml
-prompt:
+read_gas_gauge:
   system: |
-    [시스템 프롬프트 내용]
+    [가스 미터 이미지 분석 시스템 프롬프트]
   user: |
-    [유저 프롬프트 내용]
+    [가스 미터 이미지 분석 유저 프롬프트]
+
+fix_ambiguous:
+  system: |
+    [모호한 자릿수 보정 시스템 프롬프트]
+  user: |
+    Ambiguous reading: {{ambiguous}}
+    Previous reading: {{previous}}
 ```
+
+`fix_ambiguous.user`의 `{{ambiguous}}`, `{{previous}}`는 실행 시 실제 값으로 치환됩니다.
 
 ## 사용 방법
 
 ### 일반 실행 (MQTT 모드)
 
 ```bash
-./mqvision -p 8080 -c config.yaml
+./mqvision -p 8080 -c prompt.yaml
 ```
 
 - `-p`: 웹서버 포트 (기본값: 8080)
-- `-c`: 설정 파일 경로 (기본값: config.yaml)
+- `-c`: 설정 파일 경로 (기본값: prompt.yaml)
 
 브라우저에서 `http://localhost:8080/` 로 모니터링 대시보드에 접근할 수 있습니다.
 (프론트엔드를 빌드해 `web/dist`가 있어야 합니다.)
@@ -85,7 +94,7 @@ prompt:
 
 ```bash
 # 터미널 1: API 서버
-./mqvision -p 8080 -c config.yaml
+./mqvision -p 8080 -c prompt.yaml
 
 # 터미널 2: Vite 개발 서버 (API는 localhost:8080으로 프록시)
 cd web && npm install && npm run dev

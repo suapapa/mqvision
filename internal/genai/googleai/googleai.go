@@ -28,16 +28,21 @@ type Client struct {
 	model        string
 	systemPrompt string
 	promptForImg string
+	fixSystem   string
+	fixUser     string
 
 	lastRead string
 }
 
 // NewClient initializes Genkit with the Google AI plugin and an API-key-backed GenAI HTTP client.
+// fixUser may contain {{ambiguous}} and {{previous}} placeholders.
 func NewClient(ctx context.Context,
 	apiKey string,
 	model string,
 	systemPrompt string,
 	prompt string,
+	fixSystem string,
+	fixUser string,
 ) (*Client, error) {
 	gk := genkit.Init(ctx, genkit.WithPlugins(&googlegenai.GoogleAI{}))
 
@@ -56,6 +61,8 @@ func NewClient(ctx context.Context,
 		model:        model,
 		systemPrompt: systemPrompt,
 		promptForImg: prompt,
+		fixSystem:   fixSystem,
+		fixUser:     fixUser,
 	}, nil
 }
 
@@ -165,11 +172,17 @@ func (c *Client) guessAmbiguousDigits(
 		return "", fmt.Errorf("ambiguous value string %q is not valid", ambiguousValueString)
 	}
 
+	userPrompt := strings.ReplaceAll(c.fixUser, "{{ambiguous}}", ambiguousValueString)
+	userPrompt = strings.ReplaceAll(userPrompt, "{{previous}}", c.lastRead)
+
 	resp, err := genkit.Generate(ctx, c.g,
 		ai.WithModelName(c.model),
 		ai.WithMessages(
+			ai.NewSystemMessage(
+				ai.NewTextPart(c.fixSystem),
+			),
 			ai.NewUserMessage(
-				ai.NewTextPart(fmt.Sprintf(fixAmbiguousPromptFmt, ambiguousValueString, c.lastRead)),
+				ai.NewTextPart(userPrompt),
 			),
 		),
 		ai.WithConfig(&ggenai.GenerateContentConfig{
@@ -183,17 +196,6 @@ func (c *Client) guessAmbiguousDigits(
 
 	return resp.Text(), nil
 }
-
-const fixAmbiguousPromptFmt = `The value “%s” represents the output of a analog-meter-reading analysis performed on an image.
-Uncertain digits within the reading are denoted by the “?” character.
-
-Using the previously recorded meter value "%s" as a reference (only if it is not empty),
-infer and replace the “?” characters to estimate the most probable complete reading.
-
-Instructions:
-- Return a string with the exact same length as the input value.
-- Output only the predicted value, without any explanations or additional text.
-`
 
 func float32Ptr(v float32) *float32 {
 	return &v

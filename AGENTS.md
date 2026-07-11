@@ -43,11 +43,11 @@ graph TD
 
 ### Root Files
 - [main.go](file:///Users/suapapa/ws_suapapa/mqvision/main.go): Application entry point. Loads config, initializes clients, subscribes to MQTT, spins up the Gin web server, and manages channel traffic via chLuggage. Handles graceful shutdown. In MQTT mode, exits non-zero if MQTT stays disconnected for ~2 minutes so Docker `restart: unless-stopped` can recover.
-- [config.go](file:///Users/suapapa/ws_suapapa/mqvision/config.go): Loads configuration from config.yaml into the Config struct.
+- [config.go](file:///Users/suapapa/ws_suapapa/mqvision/config.go): Loads prompt settings from prompt.yaml into the Config struct.
 - [server.go](file:///Users/suapapa/ws_suapapa/mqvision/server.go): Exposes GET /api/sensor, GET /api/sensors, and GET /api/health HTTP endpoints via Gin. Implements SensorServer with sync.RWMutex. Serves the Vite SPA from `web/dist` when present.
 - [web/](file:///Users/suapapa/ws_suapapa/mqvision/web): React + TypeScript monitoring dashboard (Vite). Dev server proxies `/api` to `:8080`; production build is static files under `web/dist`. Visual tokens documented in [DESIGN.md](file:///Users/suapapa/ws_suapapa/mqvision/DESIGN.md).
 - [multi_writer_pipe.go](file:///Users/suapapa/ws_suapapa/mqvision/multi_writer_pipe.go): Duplicates output writer streams (currently unused).
-- [config.yaml](file:///Users/suapapa/ws_suapapa/mqvision/config.yaml): Prompt-only configuration (system/user instructions for the vision model).
+- [prompt.yaml](file:///Users/suapapa/ws_suapapa/mqvision/prompt.yaml): Prompt-only configuration (`read_gas_gauge` and `fix_ambiguous` system/user pairs for the vision model).
 - [.env.example](file:///Users/suapapa/ws_suapapa/mqvision/.env.example): Sample environment variables for MQTT, Concierge, and OpenAI-compatible API credentials.
 
 ### Internal Packages
@@ -83,13 +83,13 @@ cp .env.example .env
 # Edit .env: MQTT_*, CONCIERGE_*, OPENAI_*
 
 ### Run (MQTT monitoring and Gin web server)
-./mqvision -p 8080 -c config.yaml
+./mqvision -p 8080 -c prompt.yaml
 - p: Specify port (default 8080)
-- c: Path to prompt config file (default config.yaml)
+- c: Path to prompt config file (default prompt.yaml)
 - Secrets come from environment / `.env` (MQTT_*, CONCIERGE_*, OPENAI_*)
 
 ### Single-shot testing mode (Test vision analysis on local image)
-./mqvision -i sample/gauge_20251107_051332.jpg -c config.yaml
+./mqvision -i sample/gauge_20251107_051332.jpg -c prompt.yaml
 - i: Path to a local JPG file. When supplied, mqvision processes only this image, posts it to Concierge, performs vision analysis, updates the SensorServer cache, and then starts the Gin web server.
 
 ---
