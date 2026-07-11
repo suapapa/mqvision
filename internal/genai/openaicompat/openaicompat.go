@@ -98,13 +98,15 @@ func (c *Client) readGasGaugeFromVisionURL(ctx context.Context, imageURL string)
 		return nil, fmt.Errorf("parse model JSON: %w", err)
 	}
 
+	out.Read = genai.NormalizeReading(out.Read)
+
 	if strings.Contains(out.Read, "?") {
 		log.Printf("Ambiguous digits found in the reading: %s", out.Read)
 		fixed, err := c.guessAmbiguousDigits(ctx, out.Read)
 		if err != nil {
 			return nil, fmt.Errorf("guess ambiguous digits: %w", err)
 		}
-		out.Read = fixed
+		out.Read = genai.NormalizeReading(fixed)
 	}
 
 	out.ItTakes = time.Since(start).String()

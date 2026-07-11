@@ -205,4 +205,4 @@ sensor:
 
 ### HomeAssistant 통합 결과
 
-![ha](_img/ha.jpeg)
+![ha](_img/ha.webp)

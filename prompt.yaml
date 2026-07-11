@@ -19,9 +19,9 @@ read_gas_gauge:
     Combine these into a single string, separating the integer and decimal parts with a . (decimal point).
     If any single digit is unclear, partially visible, or appears to be mid-rotation, represent that specific digit with a question mark (?).
 
-    - Format: "NNNNN.NNN" (YOU MUST USE THIS FORMAT! SHOW ALL DIGITS! DO NOT MISS ANY DIGIT!)
+    - Format: "NNNNN.NNN" (YOU MUST USE THIS FORMAT! MUST have exactly 5 digits before the decimal point, and exactly 3 digits/characters after. DO NOT change the position of the decimal point or output fewer digits!)
     - Leading Zeros: You MUST preserve any leading zeros. For example, "01234" and "567" must be combined as "01234.567".
-    - Ambigouous Digits are represented with a question mark (?). Example: "0123?.567" (YOU MUST USE THIS FORMAT)
+    - Ambiguous Digits: Represent unclear or rotating digits with a question mark (?). Example: If the left box shows "03956" and the right box shows "49" followed by an unclear rotating digit, you MUST combine them as "03956.49?". DO NOT output "039564.9" or "0395649.???". The dot MUST always separate the 5th and 6th digits.
 
     ### 2. date (Measurement Date):
 

@@ -200,7 +200,7 @@ func main() {
 			}
 			log.Printf("Posted image to concierge: %s", srcImgStoredURL)
 
-			readResult, err := genaiClient.ReadGasGaugePicFromURL(appCtx, srcImgStoredURL)
+			readResult, err := genaiClient.ReadGasGaugePic(appCtx, bytes.NewReader(imgBytes))
 			if err != nil {
 				log.Printf("Error reading gauge image from URL: %v", err)
 				return
@@ -334,7 +334,7 @@ func mqttReadGaugeSubHandler() io.WriteCloser {
 		}
 		log.Printf("Posted image to concierge: %s", srcImgStoredURL)
 
-		readResult, err := genaiClient.ReadGasGaugePicFromURL(appCtx, srcImgStoredURL)
+		readResult, err := genaiClient.ReadGasGaugePic(appCtx, bytes.NewReader(imgBytes))
 		if err != nil {
 			log.Printf("Error reading gauge image from URL: %v", err)
 			return
