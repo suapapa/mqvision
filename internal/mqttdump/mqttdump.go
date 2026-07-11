@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"sync"
 	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
@@ -19,8 +20,9 @@ type Client struct {
 	chError     chan error
 	chConnected chan bool
 
-	IsConnected bool
-	LastError   error
+	mu          sync.RWMutex
+	isConnected bool
+	lastError   error
 }
 
 func NewClient(addr string, topic string) (*Client, error) {
@@ -69,13 +71,17 @@ func (c *Client) Run(h SubHandler) error {
 			if err != nil {
 				log.Printf("Error in MQTT client: %v", err)
 			}
-			c.LastError = err
+			c.mu.Lock()
+			c.lastError = err
+			c.mu.Unlock()
 		}
 	}()
 
 	go func() {
 		for isConnected := range c.chConnected {
-			c.IsConnected = isConnected
+			c.mu.Lock()
+			c.isConnected = isConnected
+			c.mu.Unlock()
 		}
 	}()
 
@@ -91,6 +97,13 @@ func (c *Client) Run(h SubHandler) error {
 	return nil
 }
 
+// Status returns the current connection status and the last error encountered.
+func (c *Client) Status() (bool, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.isConnected, c.lastError
+}
+
 func (c *Client) Stop() error {
 	if token := c.client.Unsubscribe(c.topic); token.Wait() && token.Error() != nil {
 		return fmt.Errorf("error unsubscribing from topic: %v", token.Error())
@@ -101,7 +114,10 @@ func (c *Client) Stop() error {
 	defer tkr.Stop()
 
 	for range tkr.C {
-		if !c.IsConnected {
+		c.mu.RLock()
+		connected := c.isConnected
+		c.mu.RUnlock()
+		if !connected {
 			break
 		}
 	}

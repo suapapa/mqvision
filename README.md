@@ -32,34 +32,40 @@ go build -o mqvision
 
 ## 설정
 
-1. `config_example.yaml`을 참고하여 `config.yaml` 파일을 생성합니다:
+1. `.env.example`을 복사해 `.env`를 만들고 값을 채웁니다:
 
-```yaml
-mqtt:
-  host: mqtt://username:password@mqtt-broker-address
-  topic: your-topic/gas-meter/cam
-concierge:
-  addr: http://concierge-service-address
-  token: concierge-token
-openai_compat:
-  base_url: https://api.openai.com/v1
-  api_key: sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-  model: gpt-4o-mini
-system_prompt: |
-  [시스템 프롬프트 내용]
-prompt: |
-  [프롬프트 내용]
+```bash
+cp .env.example .env
 ```
 
-2. 각 설정 항목 설명:
-   - `mqtt.host`: MQTT 브로커 연결 정보 (형식: `mqtt://username:password@host:port`)
-   - `mqtt.topic`: 센서 이미지를 수신할 MQTT 토픽
-   - `concierge.addr`: 이미지를 저장할 Concierge 서비스 주소
-   - `concierge.token`: Concierge 서비스 인증 토큰
-   - `gemini.api_key`: Google Gemini API 키
-   - `gemini.model`: 사용할 Gemini 모델
-   - `gemini.system_prompt`: AI에게 전달할 시스템 프롬프트
-   - `gemini.prompt`: AI에게 전달할 프롬프트
+```env
+MQTT_HOST=mqtt://username:password@mqtt-broker-address
+MQTT_TOPIC=your-topic/gas-meter/cam
+CONCIERGE_ADDR=http://concierge-service-address
+CONCIERGE_TOKEN=concierge-token
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+OPENAI_MODEL=gpt-4o-mini
+```
+
+2. 환경 변수 설명:
+   - `MQTT_HOST`: MQTT 브로커 연결 정보 (형식: `mqtt://username:password@host:port`)
+   - `MQTT_TOPIC`: 센서 이미지를 수신할 MQTT 토픽
+   - `CONCIERGE_ADDR`: 이미지를 저장할 Concierge 서비스 주소
+   - `CONCIERGE_TOKEN`: Concierge 서비스 인증 토큰
+   - `OPENAI_BASE_URL`: OpenAI 호환 API base URL
+   - `OPENAI_API_KEY`: OpenAI 호환 API 키
+   - `OPENAI_MODEL`: 사용할 비전 모델
+
+3. `config.yaml`에는 프롬프트만 둡니다 (저장소에 포함됨):
+
+```yaml
+prompt:
+  system: |
+    [시스템 프롬프트 내용]
+  user: |
+    [유저 프롬프트 내용]
+```
 
 ## 사용 방법
 
@@ -74,7 +80,7 @@ prompt: |
 
 ## API 엔드포인트
 
-### GET /sensor
+### GET /api/sensor
 
 최신 센서값을 반환합니다.
 
@@ -101,6 +107,40 @@ prompt: |
 }
 ```
 
+### GET /api/health
+
+MQTT 연결 상태 및 애플리케이션 헬스 체크 정보를 반환합니다.
+
+**성공 시 응답 예시 (HTTP 200):**
+
+```json
+{
+  "status": "ok",
+  "mqtt": {
+    "connected": true,
+    "last_error": null
+  },
+  "sensor": {
+    "last_updated": "2025-11-07T05:13:17+09:00"
+  }
+}
+```
+
+**오류 시 응답 예시 (HTTP 503):**
+
+```json
+{
+  "status": "fail",
+  "mqtt": {
+    "connected": false,
+    "last_error": "network Error: connection refused"
+  },
+  "sensor": {
+    "last_updated": null
+  }
+}
+```
+
 ## HomeAssistant 연동
 
 HomeAssistant의 [RESTful Sensor](https://www.home-assistant.io/integrations/sensor.rest)를
@@ -112,7 +152,7 @@ HomeAssistant의 [RESTful Sensor](https://www.home-assistant.io/integrations/sen
 sensor:
   - platform: rest
     name: Gas Meter Reading
-    resource: http://mqvision-server:8080/sensor
+    resource: http://mqvision-server:8080/api/sensor
     value_template: "{{ value_json.value }}"
     unit_of_measurement: "m³"
     json_attributes:

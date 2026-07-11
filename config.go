@@ -5,33 +5,39 @@ import (
 	"os"
 
 	"github.com/goccy/go-yaml"
+	"github.com/joho/godotenv"
 )
 
-// Config holds YAML-loaded settings for MQTT, concierge, Gemini, and OpenAI-compatible backends.
+// Config holds settings from environment variables and YAML (prompt).
 type Config struct {
 	MQTT struct {
-		Host  string `yaml:"host"`
-		Topic string `yaml:"topic"`
-	} `yaml:"mqtt"`
+		Host  string
+		Topic string
+	}
 	Concierge struct {
-		Addr  string `yaml:"addr"`
-		Token string `yaml:"token"`
-	} `yaml:"concierge"`
+		Addr  string
+		Token string
+	}
 	// Gemini struct {
-	// 	APIKey string `yaml:"api_key"`
-	// 	Model  string `yaml:"model"`
-	// } `yaml:"gemini"`
+	// 	APIKey string
+	// 	Model  string
+	// }
 	OpenAICompat struct {
-		BaseURL string `yaml:"base_url"`
-		APIKey  string `yaml:"api_key"`
-		Model   string `yaml:"model"`
-	} `yaml:"openai_compat"`
-	SystemPrompt string `yaml:"system_prompt"`
-	Prompt       string `yaml:"prompt"`
+		BaseURL string
+		APIKey  string
+		Model   string
+	}
+	Prompt struct {
+		System string `yaml:"system"`
+		User   string `yaml:"user"`
+	} `yaml:"prompt"`
 }
 
-// LoadConfig reads and parses a YAML configuration file into [Config].
+// LoadConfig reads prompt settings from YAML and connection secrets from the environment.
+// It loads a local .env file if present (missing file is not an error).
 func LoadConfig(filename string) (*Config, error) {
+	_ = godotenv.Load()
+
 	var config Config
 
 	yamlFile, err := os.Open(filename)
@@ -45,5 +51,37 @@ func LoadConfig(filename string) (*Config, error) {
 		return nil, fmt.Errorf("decode config file: %w", err)
 	}
 
+	config.MQTT.Host = os.Getenv("MQTT_HOST")
+	config.MQTT.Topic = os.Getenv("MQTT_TOPIC")
+	config.Concierge.Addr = os.Getenv("CONCIERGE_ADDR")
+	config.Concierge.Token = os.Getenv("CONCIERGE_TOKEN")
+	config.OpenAICompat.BaseURL = os.Getenv("OPENAI_BASE_URL")
+	config.OpenAICompat.APIKey = os.Getenv("OPENAI_API_KEY")
+	config.OpenAICompat.Model = os.Getenv("OPENAI_MODEL")
+
+	if err := config.validate(); err != nil {
+		return nil, err
+	}
+
 	return &config, nil
+}
+
+func (c *Config) validate() error {
+	required := []struct {
+		name, value string
+	}{
+		{"MQTT_HOST", c.MQTT.Host},
+		{"MQTT_TOPIC", c.MQTT.Topic},
+		{"CONCIERGE_ADDR", c.Concierge.Addr},
+		{"CONCIERGE_TOKEN", c.Concierge.Token},
+		{"OPENAI_BASE_URL", c.OpenAICompat.BaseURL},
+		{"OPENAI_API_KEY", c.OpenAICompat.APIKey},
+		{"OPENAI_MODEL", c.OpenAICompat.Model},
+	}
+	for _, r := range required {
+		if r.value == "" {
+			return fmt.Errorf("%s is required", r.name)
+		}
+	}
+	return nil
 }

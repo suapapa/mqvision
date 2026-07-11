@@ -7,6 +7,7 @@ require (
 	github.com/firebase/genkit/go v1.7.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/goccy/go-yaml v1.19.2
+	github.com/joho/godotenv v1.5.1
 	google.golang.org/genai v1.55.0
 )
 

@@ -1,0 +1,44 @@
+services:
+  mqvision:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/suapapa/mqvision:latest
+    container_name: mqvision
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount the prompt configuration file so it can be updated without rebuilding the image
+      - ./config.yaml:/app/config.yaml:ro
+    env_file:
+      - path: .env
+        required: false
+    # command: ["-p", "8080", "-c", "config.yaml"] # Optional: override port or config path
+
+# Optional: If you want to spin up dependent services locally for testing,
+# you can uncomment the following blocks.
+#
+#   mqtt:
+#     image: eclipse-mosquitto:latest
+#     container_name: mqvision-mqtt
+#     restart: unless-stopped
+#     ports:
+#       - "1883:1883"
+#       - "9001:9001"
+#     volumes:
+#       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+#
+#   concierge:
+#     image: ghcr.io/suapapa/concierge:latest
+#     container_name: mqvision-concierge
+#     restart: unless-stopped
+#     ports:
+#       - "8081:8080" # Maps concierge to 8081 if 8080 is used by mqvision
+#     environment:
+#       - CONCIERGE_TOKEN=1234567890
+#     volumes:
+#       - concierge-data:/data
+#
+# volumes:
+#   concierge-data:

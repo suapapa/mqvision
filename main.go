@@ -34,6 +34,7 @@ var (
 	sensorServer    *SensorServer
 	genaiClient     genai.VisionClient
 	conciergeClient *concierge.Client
+	mqttClient      *mqttdump.Client
 
 	chLuggage chan *Luggage
 
@@ -45,15 +46,15 @@ func newVisionClient(ctx context.Context, c *Config) (genai.VisionClient, error)
 	base := strings.TrimSpace(c.OpenAICompat.BaseURL)
 	key := strings.TrimSpace(c.OpenAICompat.APIKey)
 	if base == "" || key == "" {
-		return nil, fmt.Errorf("configure openai_compat (base_url + api_key)")
+		return nil, fmt.Errorf("configure OPENAI_BASE_URL and OPENAI_API_KEY")
 	}
 	log.Println("Creating OpenAI-compatible vision client")
 	return openaicompat.NewClient(
 		c.OpenAICompat.BaseURL,
 		c.OpenAICompat.APIKey,
 		c.OpenAICompat.Model,
-		c.SystemPrompt,
-		c.Prompt,
+		c.Prompt.System,
+		c.Prompt.User,
 	), nil
 	// if strings.TrimSpace(c.Gemini.APIKey) == "" {
 	// 	return nil, fmt.Errorf("configure openai_compat (base_url + api_key) or gemini (api_key)")
@@ -62,8 +63,8 @@ func newVisionClient(ctx context.Context, c *Config) (genai.VisionClient, error)
 	// return googleai.NewClient(ctx,
 	// 	c.Gemini.APIKey,
 	// 	c.Gemini.Model,
-	// 	c.SystemPrompt,
-	// 	c.Prompt,
+	// 	c.Prompt.System,
+	// 	c.Prompt.User,
 	// )
 }
 
@@ -132,7 +133,7 @@ func main() {
 		}
 	}(ctx)
 
-	mqttClient, err := mqttdump.NewClient(config.MQTT.Host, config.MQTT.Topic)
+	mqttClient, err = mqttdump.NewClient(config.MQTT.Host, config.MQTT.Topic)
 	if err != nil {
 		log.Fatalf("Error creating MQTT client: %v", err)
 	}
@@ -199,7 +200,9 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	// router.Use(gin.Logger())
-	router.GET("/sensor", sensorServer.GetValueHandler)
+	router.GET("/api/sensor", sensorServer.GetValueHandler)
+	router.GET("/api/sensors", sensorServer.GetHistoryHandler)
+	router.GET("/api/health", healthHandler)
 
 	// Create HTTP server with graceful shutdown support
 	srv := &http.Server{
@@ -298,6 +301,56 @@ func mqttReadGaugeSubHandler() io.WriteCloser {
 	}()
 
 	return pw
+}
+
+func healthHandler(c *gin.Context) {
+	if mqttClient == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"status": "ok",
+			"info":   "single-shot mode or mqtt client not initialized",
+		})
+		return
+	}
+
+	isConnected, lastErr := mqttClient.Status()
+
+	status := "ok"
+	httpStatus := http.StatusOK
+	var errMsg *string
+	if lastErr != nil {
+		s := lastErr.Error()
+		errMsg = &s
+	}
+
+	if !isConnected {
+		if flagSingleShot == "" {
+			status = "fail"
+			httpStatus = http.StatusServiceUnavailable
+		}
+	}
+
+	sensorServer.RLock()
+	lastUpdated := sensorServer.UpdatedAt
+	sensorServer.RUnlock()
+
+	var lastUpdatedStr *string
+	if !lastUpdated.IsZero() {
+		s := lastUpdated.Format(time.RFC3339)
+		lastUpdatedStr = &s
+	}
+
+	response := gin.H{
+		"status": status,
+		"mqtt": gin.H{
+			"connected":  isConnected,
+			"last_error": errMsg,
+		},
+		"sensor": gin.H{
+			"last_updated": lastUpdatedStr,
+		},
+	}
+
+	c.JSON(httpStatus, response)
 }
 
 // func mqttFileDumpSubHandler() io.WriteCloser {

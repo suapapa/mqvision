@@ -1,6 +1,6 @@
 .gitignore
 mqvision
-config.yaml
+.env
 .DS_Store
 
 .agents/
