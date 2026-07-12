@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,64 +14,56 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestRingBuffer(t *testing.T) {
-	t.Parallel()
-
-	t.Run("Push and GetAll within capacity", func(t *testing.T) {
-		t.Parallel()
-		rb := NewRingBuffer(3)
-		rb.Push(SensorReading{Value: 1.1})
-		rb.Push(SensorReading{Value: 2.2})
-
-		items := rb.GetAll()
-		if len(items) != 2 {
-			t.Fatalf("expected 2 items, got %d", len(items))
-		}
-		if items[0].Value != 1.1 || items[1].Value != 2.2 {
-			t.Errorf("unexpected items: %+v", items)
-		}
-	})
-
-	t.Run("Push beyond capacity wraps around", func(t *testing.T) {
-		t.Parallel()
-		rb := NewRingBuffer(3)
-		rb.Push(SensorReading{Value: 1.1})
-		rb.Push(SensorReading{Value: 2.2})
-		rb.Push(SensorReading{Value: 3.3})
-		rb.Push(SensorReading{Value: 4.4}) // should overwrite 1.1
-
-		items := rb.GetAll()
-		if len(items) != 3 {
-			t.Fatalf("expected 3 items, got %d", len(items))
-		}
-		if items[0].Value != 2.2 || items[1].Value != 3.3 || items[2].Value != 4.4 {
-			t.Errorf("unexpected items: %+v", items)
-		}
-	})
-}
-
 func TestSensorServerHistory(t *testing.T) {
-	t.Parallel()
+	mongoURI := os.Getenv("MONGO_URI")
+	if mongoURI == "" {
+		mongoURI = "mongodb://localhost:27017"
+	}
+	dbName := "mqvision_test"
 
-	// Set up server and set some values
-	s := &SensorServer{}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	s, err := NewSensorServer(ctx, mongoURI, dbName)
+	if err != nil {
+		t.Skipf("Skipping MongoDB test: connection failed: %v", err)
+	}
+	defer func() {
+		// clean up test database
+		_ = s.db.Drop(ctx)
+		_ = s.Close(ctx)
+	}()
 
 	now := time.Now()
-	// Set Value internally
-	s.SetValue(10.5, "meta1")
 
-	// Artificially modify history timestamps to simulate time passing
-	s.Lock()
-	// We want one reading within 7 days, one outside 7 days
-	s.history.data[0].UpdatedAt = now.Add(-8 * 24 * time.Hour) // Old (filtered out)
+	// Insert test data using SetValue
+	err = s.SetValue(ctx, 10.5, "meta1")
+	if err != nil {
+		t.Fatalf("failed to set value: %v", err)
+	}
 
-	// Add another one (within 7 days)
-	s.history.Push(SensorReading{
+	// We want to insert another document, but since SetValue automatically sets updated_at to now,
+	// if we want to test filtering, we can directly insert a document with past timestamp to mongodb
+	pastReading := SensorReading{
 		Value:     20.5,
-		UpdatedAt: now.Add(-3 * 24 * time.Hour), // Within 7 days
+		UpdatedAt: now.Add(-8 * 24 * time.Hour), // Old (should be filtered out since it's > 7 days)
 		Metadata:  "meta2",
-	})
-	s.Unlock()
+	}
+	_, err = s.collection.InsertOne(ctx, pastReading)
+	if err != nil {
+		t.Fatalf("failed to insert past reading: %v", err)
+	}
+
+	// Add another one within 7 days
+	recentReading := SensorReading{
+		Value:     30.5,
+		UpdatedAt: now.Add(-3 * 24 * time.Hour), // Within 7 days
+		Metadata:  "meta3",
+	}
+	_, err = s.collection.InsertOne(ctx, recentReading)
+	if err != nil {
+		t.Fatalf("failed to insert recent reading: %v", err)
+	}
 
 	// Test the Gin handler
 	gin.SetMode(gin.TestMode)
@@ -94,12 +87,18 @@ func TestSensorServerHistory(t *testing.T) {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
 
-	if len(readings) != 1 {
-		t.Fatalf("expected 1 reading in response, got %d", len(readings))
+	// We expect 2 readings:
+	// 1. 10.5 (set just now)
+	// 2. 30.5 (set at now - 3 days)
+	// The 20.5 (at now - 8 days) should be filtered out.
+	if len(readings) != 2 {
+		t.Fatalf("expected 2 readings in response, got %d", len(readings))
 	}
 
-	if readings[0].Value != 20.5 {
-		t.Errorf("expected value 20.5, got %v", readings[0].Value)
+	// Sorted by updated_at ascending.
+	// 30.5 is older than 10.5, so index 0 should be 30.5, index 1 should be 10.5
+	if readings[0].Value != 30.5 || readings[1].Value != 10.5 {
+		t.Errorf("unexpected readings order or values: %+v", readings)
 	}
 }
 

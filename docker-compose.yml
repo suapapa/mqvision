@@ -14,6 +14,11 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017
+      - MONGO_DB=mqvision
+    depends_on:
+      - mongodb
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
       interval: 30s
@@ -21,6 +26,16 @@ services:
       retries: 3
       start_period: 20s
     # command: ["-p", "8080", "-c", "prompt.yaml"] # Optional: override port or config path
+
+  mongodb:
+    image: mongo:6.0
+    container_name: mqvision-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+
 
 # Optional: If you want to spin up dependent services locally for testing,
 # you can uncomment the following blocks.
@@ -46,5 +61,7 @@ services:
 #     volumes:
 #       - concierge-data:/data
 #
-# volumes:
-#   concierge-data:
+volumes:
+  mongodb-data:
+  # concierge-data:
+

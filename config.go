@@ -34,6 +34,10 @@ type Config struct {
 		APIKey  string
 		Model   string
 	}
+	Mongo struct {
+		URI string
+		DB  string
+	}
 	ReadGasGauge PromptPair `yaml:"read_gas_gauge"`
 	FixAmbiguous PromptPair `yaml:"fix_ambiguous"`
 }
@@ -64,6 +68,15 @@ func LoadConfig(filename string) (*Config, error) {
 	config.OpenAICompat.APIKey = os.Getenv("OPENAI_API_KEY")
 	config.OpenAICompat.Model = os.Getenv("OPENAI_MODEL")
 
+	config.Mongo.URI = os.Getenv("MONGO_URI")
+	if config.Mongo.URI == "" {
+		config.Mongo.URI = "mongodb://localhost:27017"
+	}
+	config.Mongo.DB = os.Getenv("MONGO_DB")
+	if config.Mongo.DB == "" {
+		config.Mongo.DB = "mqvision"
+	}
+
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
@@ -80,6 +93,8 @@ func (c *Config) validate() error {
 		{"OPENAI_BASE_URL", c.OpenAICompat.BaseURL},
 		{"OPENAI_API_KEY", c.OpenAICompat.APIKey},
 		{"OPENAI_MODEL", c.OpenAICompat.Model},
+		{"MONGO_URI", c.Mongo.URI},
+		{"MONGO_DB", c.Mongo.DB},
 		{"read_gas_gauge.system", c.ReadGasGauge.System},
 		{"read_gas_gauge.user", c.ReadGasGauge.User},
 		{"fix_ambiguous.system", c.FixAmbiguous.System},

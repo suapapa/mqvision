@@ -134,8 +134,18 @@ func main() {
 	log.Println("Creating concierge client")
 	conciergeClient = concierge.NewClient(config.Concierge.Addr, config.Concierge.Token)
 
-	log.Println("Creating sensor server")
-	sensorServer = &SensorServer{}
+	log.Println("Creating sensor server (MongoDB)")
+	sensorServer, err = NewSensorServer(ctx, config.Mongo.URI, config.Mongo.DB)
+	if err != nil {
+		log.Fatalf("Error creating sensor server: %v", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := sensorServer.Close(shutdownCtx); err != nil {
+			log.Printf("Error closing sensor server: %v", err)
+		}
+	}()
 
 	chLuggage = make(chan *Luggage, 10)
 	var wg sync.WaitGroup
@@ -164,7 +174,10 @@ func main() {
 					continue
 				}
 
-				sensorServer.SetValue(read, readResult)
+				if err := sensorServer.SetValue(ctx, read, readResult); err != nil {
+					log.Printf("Error updating sensor value in MongoDB: %v", err)
+					continue
+				}
 				log.Printf("Updated sensor value: %s (%.3f)", readResult.Read, read)
 			}
 		}

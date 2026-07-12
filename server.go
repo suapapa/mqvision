@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -9,6 +11,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 // mountWebUI serves the Vite-built SPA from webRoot (typically web/dist).
@@ -42,43 +47,9 @@ func mountWebUI(router *gin.Engine, webRoot string) {
 }
 
 type SensorReading struct {
-	Value     float64   `json:"value"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Metadata  any       `json:"metadata"`
-}
-
-type RingBuffer struct {
-	data     []SensorReading
-	capacity int
-	start    int
-	size     int
-}
-
-func NewRingBuffer(capacity int) *RingBuffer {
-	return &RingBuffer{
-		data:     make([]SensorReading, capacity),
-		capacity: capacity,
-	}
-}
-
-func (r *RingBuffer) Push(item SensorReading) {
-	if r.size < r.capacity {
-		index := (r.start + r.size) % r.capacity
-		r.data[index] = item
-		r.size++
-	} else {
-		r.data[r.start] = item
-		r.start = (r.start + 1) % r.capacity
-	}
-}
-
-func (r *RingBuffer) GetAll() []SensorReading {
-	items := make([]SensorReading, 0, r.size)
-	for i := 0; i < r.size; i++ {
-		index := (r.start + i) % r.capacity
-		items = append(items, r.data[index])
-	}
-	return items
+	Value     float64   `json:"value" bson:"value"`
+	UpdatedAt time.Time `json:"updated_at" bson:"updated_at"`
+	Metadata  any       `json:"metadata" bson:"metadata"`
 }
 
 type SensorServer struct {
@@ -86,26 +57,99 @@ type SensorServer struct {
 	UpdatedAt time.Time `json:"updated_at"` // latest updated at
 	Metadata  any       `json:"metadata"`   // latest metadata
 
-	history *RingBuffer
+	client     *mongo.Client
+	db         *mongo.Database
+	collection *mongo.Collection
 
 	sync.RWMutex
 }
 
-func (s *SensorServer) SetValue(value float64, metadata any) {
+// NewSensorServer initializes the MongoDB connection, creates a Time Series collection if not exists,
+// and loads the latest reading to initialize the in-memory cache.
+func NewSensorServer(ctx context.Context, uri, dbName string) (*SensorServer, error) {
+	client, err := mongo.Connect(options.Client().ApplyURI(uri))
+	if err != nil {
+		return nil, fmt.Errorf("mongo connect: %w", err)
+	}
+
+	if err := client.Ping(ctx, nil); err != nil {
+		return nil, fmt.Errorf("mongo ping: %w", err)
+	}
+
+	db := client.Database(dbName)
+	collName := "sensor_readings"
+
+	// Check if collection exists
+	names, err := db.ListCollectionNames(ctx, bson.M{"name": collName})
+	if err != nil {
+		return nil, fmt.Errorf("list collections: %w", err)
+	}
+
+	if len(names) == 0 {
+		// Create Time Series collection
+		opts := options.CreateCollection().SetTimeSeriesOptions(
+			options.TimeSeries().
+				SetTimeField("updated_at").
+				SetMetaField("metadata").
+				SetGranularity("minutes"),
+		)
+		if err := db.CreateCollection(ctx, collName, opts); err != nil {
+			return nil, fmt.Errorf("create timeseries collection: %w", err)
+		}
+	}
+
+	coll := db.Collection(collName)
+	s := &SensorServer{
+		client:     client,
+		db:         db,
+		collection: coll,
+	}
+
+	// Initialize in-memory cache with the latest document
+	var latest SensorReading
+	findOpts := options.FindOne().SetSort(bson.M{"updated_at": -1})
+	err = coll.FindOne(ctx, bson.M{}, findOpts).Decode(&latest)
+	if err == nil {
+		s.Value = latest.Value
+		s.UpdatedAt = latest.UpdatedAt
+		s.Metadata = latest.Metadata
+	} else if err != mongo.ErrNoDocuments {
+		return nil, fmt.Errorf("load latest reading: %w", err)
+	}
+
+	return s, nil
+}
+
+// Close closes the MongoDB connection.
+func (s *SensorServer) Close(ctx context.Context) error {
+	if s.client != nil {
+		return s.client.Disconnect(ctx)
+	}
+	return nil
+}
+
+// SetValue stores the reading into MongoDB timeseries collection and updates the in-memory cache.
+func (s *SensorServer) SetValue(ctx context.Context, value float64, metadata any) error {
 	s.Lock()
 	defer s.Unlock()
+
+	now := time.Now()
+	reading := SensorReading{
+		Value:     value,
+		UpdatedAt: now,
+		Metadata:  metadata,
+	}
+
+	_, err := s.collection.InsertOne(ctx, reading)
+	if err != nil {
+		return fmt.Errorf("insert reading: %w", err)
+	}
+
 	s.Value = value
 	s.Metadata = metadata
-	s.UpdatedAt = time.Now()
+	s.UpdatedAt = now
 
-	if s.history == nil {
-		s.history = NewRingBuffer(10080) // Capacity for 7 days of 1-minute updates
-	}
-	s.history.Push(SensorReading{
-		Value:     value,
-		UpdatedAt: s.UpdatedAt,
-		Metadata:  metadata,
-	})
+	return nil
 }
 
 func (s *SensorServer) GetValueHandler(c *gin.Context) {
@@ -123,23 +167,30 @@ func (s *SensorServer) GetValueHandler(c *gin.Context) {
 }
 
 func (s *SensorServer) GetHistoryHandler(c *gin.Context) {
-	s.RLock()
-	defer s.RUnlock()
+	cutoff := time.Now().Add(-7 * 24 * time.Hour)
+	filter := bson.M{
+		"updated_at": bson.M{
+			"$gte": cutoff,
+		},
+	}
+	findOpts := options.Find().SetSort(bson.M{"updated_at": 1})
 
-	if s.history == nil {
-		c.JSON(http.StatusOK, []SensorReading{})
+	cursor, err := s.collection.Find(c.Request.Context(), filter, findOpts)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("failed to fetch history: %v", err),
+		})
+		return
+	}
+	defer cursor.Close(c.Request.Context())
+
+	var readings []SensorReading = []SensorReading{}
+	if err := cursor.All(c.Request.Context(), &readings); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("failed to decode history: %v", err),
+		})
 		return
 	}
 
-	allReadings := s.history.GetAll()
-	cutoff := time.Now().Add(-7 * 24 * time.Hour)
-
-	var filtered []SensorReading
-	for _, r := range allReadings {
-		if r.UpdatedAt.After(cutoff) {
-			filtered = append(filtered, r)
-		}
-	}
-
-	c.JSON(http.StatusOK, filtered)
+	c.JSON(http.StatusOK, readings)
 }
