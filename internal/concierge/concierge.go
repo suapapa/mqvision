@@ -66,12 +66,21 @@ func (c *Client) PostImage(image io.Reader, mimeType string) (string, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("concierge server returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
 	var result struct {
 		Key string `json:"key"`
 	}
 	err = json.NewDecoder(resp.Body).Decode(&result)
 	if err != nil {
 		return "", err
+	}
+
+	if result.Key == "" {
+		return "", fmt.Errorf("concierge response did not contain a key")
 	}
 
 	return c.addr + "/api/v1/luggage/" + result.Key, nil

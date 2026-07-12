@@ -77,8 +77,6 @@ func (c *Config) validate() error {
 	}{
 		{"MQTT_HOST", c.MQTT.Host},
 		{"MQTT_TOPIC", c.MQTT.Topic},
-		{"CONCIERGE_ADDR", c.Concierge.Addr},
-		{"CONCIERGE_TOKEN", c.Concierge.Token},
 		{"OPENAI_BASE_URL", c.OpenAICompat.BaseURL},
 		{"OPENAI_API_KEY", c.OpenAICompat.APIKey},
 		{"OPENAI_MODEL", c.OpenAICompat.Model},

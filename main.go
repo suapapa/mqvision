@@ -193,16 +193,25 @@ func main() {
 				log.Fatalf("Error reading image file: %v", err)
 			}
 
-			srcImgStoredURL, err := conciergeClient.PostImage(bytes.NewReader(imgBytes), "image/jpeg")
-			if err != nil {
-				log.Printf("Error posting image to concierge: %v", err)
-				return
-			}
-			log.Printf("Posted image to concierge: %s", srcImgStoredURL)
+			var srcImgStoredURL string
+			var readResult *genai.GasMeterReadResult
 
-			readResult, err := genaiClient.ReadGasGaugePic(appCtx, bytes.NewReader(imgBytes))
+			if strings.TrimSpace(config.Concierge.Addr) != "" && strings.TrimSpace(config.Concierge.Token) != "" {
+				srcImgStoredURL, err = conciergeClient.PostImage(bytes.NewReader(imgBytes), "image/jpeg")
+				if err != nil {
+					log.Printf("Error posting image to concierge: %v", err)
+				} else {
+					log.Printf("Posted image to concierge: %s", srcImgStoredURL)
+				}
+			}
+
+			if srcImgStoredURL != "" {
+				readResult, err = genaiClient.ReadGasGaugePicFromURL(appCtx, srcImgStoredURL)
+			} else {
+				readResult, err = genaiClient.ReadGasGaugePic(appCtx, bytes.NewReader(imgBytes))
+			}
 			if err != nil {
-				log.Printf("Error reading gauge image from URL: %v", err)
+				log.Printf("Error reading gauge image: %v", err)
 				return
 			}
 
@@ -327,16 +336,25 @@ func mqttReadGaugeSubHandler() io.WriteCloser {
 			return
 		}
 
-		srcImgStoredURL, err := conciergeClient.PostImage(bytes.NewReader(imgBytes), "image/jpeg")
-		if err != nil {
-			log.Printf("Error posting image to concierge: %v", err)
-			return
-		}
-		log.Printf("Posted image to concierge: %s", srcImgStoredURL)
+		var srcImgStoredURL string
+		var readResult *genai.GasMeterReadResult
 
-		readResult, err := genaiClient.ReadGasGaugePic(appCtx, bytes.NewReader(imgBytes))
+		if strings.TrimSpace(config.Concierge.Addr) != "" && strings.TrimSpace(config.Concierge.Token) != "" {
+			srcImgStoredURL, err = conciergeClient.PostImage(bytes.NewReader(imgBytes), "image/jpeg")
+			if err != nil {
+				log.Printf("Error posting image to concierge: %v", err)
+			} else {
+				log.Printf("Posted image to concierge: %s", srcImgStoredURL)
+			}
+		}
+
+		if srcImgStoredURL != "" {
+			readResult, err = genaiClient.ReadGasGaugePicFromURL(appCtx, srcImgStoredURL)
+		} else {
+			readResult, err = genaiClient.ReadGasGaugePic(appCtx, bytes.NewReader(imgBytes))
+		}
 		if err != nil {
-			log.Printf("Error reading gauge image from URL: %v", err)
+			log.Printf("Error reading gauge image: %v", err)
 			return
 		}
 		if readResult == nil {
