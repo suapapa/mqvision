@@ -112,7 +112,7 @@ func NewSensorServer(ctx context.Context, uri, dbName string) (*SensorServer, er
 	if err == nil {
 		s.Value = latest.Value
 		s.UpdatedAt = latest.UpdatedAt
-		s.Metadata = latest.Metadata
+		s.Metadata = normalizeMetadata(latest.Metadata)
 	} else if err != mongo.ErrNoDocuments {
 		return nil, fmt.Errorf("load latest reading: %w", err)
 	}
@@ -192,5 +192,73 @@ func (s *SensorServer) GetHistoryHandler(c *gin.Context) {
 		return
 	}
 
+	for i := range readings {
+		readings[i].Metadata = normalizeMetadata(readings[i].Metadata)
+	}
+
 	c.JSON(http.StatusOK, readings)
+}
+
+func normalizeMetadata(metadata any) any {
+	if metadata == nil {
+		return nil
+	}
+
+	var m map[string]any
+
+	switch v := metadata.(type) {
+	case map[string]any:
+		m = v
+	case bson.M:
+		m = map[string]any(v)
+	case bson.D:
+		m = make(map[string]any)
+		for _, elem := range v {
+			m[elem.Key] = elem.Value
+		}
+	default:
+		return metadata
+	}
+
+	// 1. If "gasmeterreadresult" key exists (nested map or bson.D/bson.M), flatten it.
+	if val, ok := m["gasmeterreadresult"]; ok {
+		var subMap map[string]any
+		switch subVal := val.(type) {
+		case map[string]any:
+			subMap = subVal
+		case bson.M:
+			subMap = map[string]any(subVal)
+		case bson.D:
+			subMap = make(map[string]any)
+			for _, elem := range subVal {
+				subMap[elem.Key] = elem.Value
+			}
+		}
+		if subMap != nil {
+			for k, v := range subMap {
+				if _, exists := m[k]; !exists {
+					m[k] = v
+				}
+			}
+		}
+		delete(m, "gasmeterreadresult")
+	}
+
+	// 2. Map old field names to new ones if new ones don't exist
+	fieldMappings := map[string]string{
+		"srcimageurl": "src_image_url",
+		"readat":      "read_at",
+		"ittakes":     "it_takes",
+	}
+
+	for oldKey, newKey := range fieldMappings {
+		if val, ok := m[oldKey]; ok {
+			if _, exists := m[newKey]; !exists {
+				m[newKey] = val
+			}
+			delete(m, oldKey)
+		}
+	}
+
+	return m
 }

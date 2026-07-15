@@ -14,8 +14,8 @@ type VisionClient interface {
 }
 
 type GasMeterReadResult struct {
-	Read    string    `json:"read"`
-	Date    string    `json:"date"`
-	ReadAt  time.Time `json:"read_at,omitempty"`
-	ItTakes string    `json:"it_takes,omitempty"`
+	Read    string    `json:"read" bson:"read"`
+	Date    string    `json:"date" bson:"date"`
+	ReadAt  time.Time `json:"read_at,omitempty" bson:"read_at,omitempty"`
+	ItTakes string    `json:"it_takes,omitempty" bson:"it_takes,omitempty"`
 }

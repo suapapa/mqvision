@@ -106,8 +106,8 @@ func newVisionClient(ctx context.Context, c *Config) (genai.VisionClient, error)
 }
 
 type Luggage struct {
-	*genai.GasMeterReadResult
-	SrcImageURL string `json:"src_image_url"`
+	*genai.GasMeterReadResult `bson:",inline"`
+	SrcImageURL               string `json:"src_image_url" bson:"src_image_url"`
 }
 
 func main() {
