@@ -18,8 +18,8 @@ export function LatestReading({ sensor, loading }: Props) {
   const [copied, setCopied] = useState(false)
 
   const rawVal = meta?.read || String(sensor?.value || '')
-  const cleanVal = rawVal.replace(/\./g, '')
-  const copyText = cleanVal.slice(0, 4)
+  const integerPart = rawVal.split('.')[0]
+  const copyText = integerPart.replace(/^0+/, '') || '0'
 
   const handleCopy = () => {
     if (!copyText) return
@@ -56,8 +56,8 @@ export function LatestReading({ sensor, loading }: Props) {
               <span className="metric__unit">m³</span>
             </p>
             {copyText && (
-              <button onClick={handleCopy} className="btn-action btn-copy" aria-label="계측값 앞 4자리 복사">
-                {copied ? '복사 완료!' : `앞 4자리 복사 (${copyText})`}
+              <button onClick={handleCopy} className="btn-action btn-copy" aria-label="계측값 복사">
+                {copied ? '복사 완료!' : `검침값 복사 (${copyText})`}
               </button>
             )}
           </div>
