@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { SensorResponse } from '../types'
 
 type Props = {
@@ -14,6 +15,19 @@ function formatUpdated(iso: string | undefined): string {
 
 export function LatestReading({ sensor, loading }: Props) {
   const meta = sensor?.metadata
+  const [copied, setCopied] = useState(false)
+
+  const rawVal = meta?.read || String(sensor?.value || '')
+  const cleanVal = rawVal.replace(/\./g, '')
+  const copyText = cleanVal.slice(0, 4)
+
+  const handleCopy = () => {
+    if (!copyText) return
+    navigator.clipboard.writeText(copyText).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
 
   return (
     <div>
@@ -33,13 +47,20 @@ export function LatestReading({ sensor, loading }: Props) {
         </p>
       ) : (
         <>
-          <p className="metric" aria-labelledby="latest-heading">
-            {sensor.value.toLocaleString('en-US', {
-              minimumFractionDigits: 3,
-              maximumFractionDigits: 3,
-            })}
-            <span className="metric__unit">m³</span>
-          </p>
+          <div className="metric-container">
+            <p className="metric" aria-labelledby="latest-heading">
+              {sensor.value.toLocaleString('en-US', {
+                minimumFractionDigits: 3,
+                maximumFractionDigits: 3,
+              })}
+              <span className="metric__unit">m³</span>
+            </p>
+            {copyText && (
+              <button onClick={handleCopy} className="btn-action btn-copy" aria-label="계측값 앞 4자리 복사">
+                {copied ? '복사 완료!' : `앞 4자리 복사 (${copyText})`}
+              </button>
+            )}
+          </div>
 
           <dl className="meta-list">
             <div className="meta-list__row">

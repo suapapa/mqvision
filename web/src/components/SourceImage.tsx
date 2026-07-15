@@ -14,11 +14,36 @@ export function SourceImage({ src, loading }: Props) {
 
   const showImage = Boolean(src) && !failed
 
+  const handleDownload = async () => {
+    if (!src) return
+    try {
+      const response = await fetch(src)
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `gas_meter_${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      window.open(src, '_blank')
+    }
+  }
+
   return (
     <div>
-      <h2 className="section-label" id="image-heading">
-        원본 이미지
-      </h2>
+      <div className="section-header">
+        <h2 className="section-label" id="image-heading">
+          원본 이미지
+        </h2>
+        {showImage && (
+          <button onClick={handleDownload} className="btn-action" aria-label="원본 이미지 다운로드">
+            다운로드
+          </button>
+        )}
+      </div>
       <div className="image-frame" aria-labelledby="image-heading">
         {loading && !src ? (
           <span className="skeleton skeleton--image" aria-hidden />
